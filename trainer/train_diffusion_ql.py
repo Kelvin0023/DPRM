@@ -168,7 +168,7 @@ class DiffQLTrainer:
 
 
             """ Policy Training """
-            bc_loss = self.model.policy_loss(sampled_act_chunk, norm_obs_policy)
+            bc_loss = self.model.policy_loss(x=sampled_act_chunk, cond={"state": norm_obs_policy})
             bc_loss = torch.mean(bc_loss)
 
             new_act_chunk = self.model.forward_train(cond={"state": norm_obs_policy}, deterministic=False)
@@ -221,7 +221,6 @@ class DiffQLTrainer:
         # Update lr, min_sampling_std
         self.actor_lr_scheduler.step()
         self.critic_lr_scheduler.step()
-        self.model.step()
 
         return metrics
 
