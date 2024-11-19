@@ -1,41 +1,12 @@
-# Add the repository root to the python path
-import os
-import sys
-
-def fetch_repo_root(file_path, repo_name):
-    # Split the file path into parts
-    path_parts = file_path.split(os.sep)
-
-    # Try to find the repository name in the path
-    if repo_name in path_parts:
-        # Find the index of the repository name
-        repo_index = path_parts.index(repo_name)
-        # Join the path components up to the repository name
-        repo_root = os.sep.join(path_parts[:repo_index + 1])
-        return repo_root
-    else:
-        raise ValueError("Repository name not found in the file path")
-
-try:
-    current_file_path = os.path.abspath(__file__)
-    repo_name = "DPRM"
-    repo_root = fetch_repo_root(current_file_path, repo_name)
-    sys.path.append(repo_root)
-    print(f"Repository root '{repo_root}' added to Python path.")
-except ValueError as e:
-    print(e)
-
-
 from omni.isaac.lab.app import AppLauncher
 import hydra
 from omegaconf import DictConfig
 from utils.misc import omegaconf_to_dict
 
-
-# Create the global variable to store the simulation app
+# Declare the global variable
 simulation_app = None
 
-@hydra.main(config_name="test_maze", config_path="../../cfg", version_base="1.2")
+@hydra.main(config_name="test_prm_maze", config_path="cfg", version_base="1.2")
 def create_sim_app(cfg: DictConfig):
     global simulation_app
 
@@ -48,8 +19,11 @@ def create_sim_app(cfg: DictConfig):
 create_sim_app()
 
 
+
 import gymnasium as gym
 import torch
+import numpy as np
+import matplotlib.pyplot as plt
 
 from omni.isaac.lab_tasks.utils import parse_env_cfg
 from omni.isaac.lab.utils import update_class_from_dict
@@ -58,10 +32,9 @@ from utils.misc import set_np_formatting, set_seed
 from tasks.maze.config.maze import MAZEA_CFG, MAZEB_CFG, MAZEC_CFG
 
 
-@hydra.main(config_name="test_maze", config_path="../../cfg", version_base="1.2")
-def main(cfg: DictConfig):
+@hydra.main(config_name="test_prm_maze", config_path="cfg", version_base="1.2")
+def build_prm_mazebot(cfg: DictConfig):
     """ Test the MazeBot task with random actions """
-    # declare the global variable
     global simulation_app
 
     # set numpy formatting for printing only
@@ -95,19 +68,72 @@ def main(cfg: DictConfig):
     # create DirectRLEnv
     env = gym.make(maze_cfg["task_id"], cfg=env_cfg)
 
+    # create sampling-based planner
+    planner_cfg = maze_cfg["planner"]
+    planner = hydra.utils.get_class(planner_cfg["_target_"])(
+        cfg=planner_cfg,
+        env=env,
+        model=None,
+        critic=None,
+        obs_policy_rms=None,
+        obs_critic_rms=None,
+        state_rms=None,
+        value_rms=None,
+        separate_planning_model=False,
+        device=maze_cfg["rl_device"],
+    )
+
     # print info (this is vectorized environment)
     print(f"[INFO]: Gym observation space: {env.observation_space}")
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     env.reset()
-    # simulate environment
+
+    # run PRM
+    epochs = []
+    num_nodes_list = []
+    for epoch in range(200):
+        planner.run_prm()
+        # Store the values for plotting
+        epochs.append(epoch)
+        num_nodes_list.append(planner.prm_q.shape[0])
+
+    # save data
+    if maze_cfg["save_num_nodes"]:
+        np.save(f"epoch_{maze_cfg['planner']['new_state_portion']}.npy", np.array(epochs))
+        np.save(f"num_nodes_list_{maze_cfg['planner']['new_state_portion']}.npy", np.array(num_nodes_list))
+
+    # Plot num_nodes vs. epoch
+    plt.plot(epochs, num_nodes_list, marker='o')
+    plt.xlabel('Epoch')
+    plt.ylabel('Number of Nodes')
+    plt.title('Number of Nodes vs Epoch')
+    plt.grid(True)
+    plt.show()
+
+    # Perform random walk
+    walk, obs_buf, act_buf = planner.extract_walks(num_walks=5, length=10)
+    print("***** Extract Random Walks on PRM *****")
+    for i in range(walk.shape[0]):
+        for j in range(walk.shape[1] - 1):
+            if walk[i, j + 1, 0] == float('-inf'):
+                break
+            planner._visualize_new_edges(
+                walk[i, j, :].unsqueeze(0),
+                walk[i, j + 1, :].unsqueeze(0),
+                edge_color=[0, 0, 0, 1],
+                node_color=[1, 0, 0, 1]
+            )
+    print("***** End of Random Walks *****")
+
+    # simulate environment with zero actions
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
-            # sample actions from normal distribution N(0, 1)
-            actions = env.random_actions()
+            # take zero actions
+            zero_action = env.zero_actions()
             # apply actions
-            env.step(actions)
+            env.step(zero_action)
 
     # close the simulator
     env.close()
@@ -115,6 +141,6 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     # run the main function
-    main()
+    build_prm_mazebot()
     # close sim app
     simulation_app.close()

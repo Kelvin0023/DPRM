@@ -1,0 +1,25 @@
+# sim
+decimation: 2
+episode_length_s: 10.0
+
+# task
+num_actions: 2
+num_observations: 21
+num_states: 21
+num_q_space: 6
+
+## reward and termination
+#reward_type: dense
+#dense_reward_scale: 1.0
+#success_reward_scale: 10.0
+#at_goal_threshold: 0.1
+#robot_object_thres: 0.5
+#
+## PRM sampling space limits
+#valid_robot_object_thres: 0.3
+#dof_vel_lower_limit: [-1.0, -1.0]
+#dof_vel_upper_limit: [1.0, 1.0]
+
+# PD controller
+kp: 5
+kd: 2

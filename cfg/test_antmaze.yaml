@@ -1,0 +1,25 @@
+defaults:
+  - /task/AntMaze
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# task id
+task_id: "Isaac-AntMaze-v0"
+
+# seed - set to -1 to choose random seed
+seed: 0
+
+## Device config
+gpu: '0'
+
+# disable fabric and use USD I/O operations
+disable_fabric: False
+
+# environment number
+num_envs: 1
+
+# disable graphics
+headless: False
+
+# device for running physics simulation
+pipeline: 'gpu'

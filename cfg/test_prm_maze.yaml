@@ -1,0 +1,32 @@
+defaults:
+  - /task/Maze
+  - /planner/PRM
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# task id
+task_id: "Isaac-MazeBot-v0"
+
+# seed - set to -1 to choose random seed
+seed: 0
+
+## device config
+gpu: '0'
+
+# disable fabric and use USD I/O operations
+disable_fabric: False
+
+# environment number
+num_envs: 4096
+
+# disable graphics
+headless: True
+
+# device for running physics simulation
+pipeline: 'gpu'
+
+# device for running planner and RL
+rl_device: 'cuda:0'
+
+# Save number of nodes in each epoch for plotting
+save_num_nodes: False

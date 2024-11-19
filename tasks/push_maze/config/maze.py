@@ -22,7 +22,7 @@ def fetch_repo_root(file_path, repo_name):
 
 try:
     current_file_path = os.path.abspath(__file__)
-    repo_name = "diffuse-plan-learn"
+    repo_name = "DPRM"
     repo_root = fetch_repo_root(current_file_path, repo_name)
 except ValueError as e:
     print(e)

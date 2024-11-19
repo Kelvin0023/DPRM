@@ -1,0 +1,12 @@
+_target_: algo.prm.PRM
+
+rollout_len: 4
+samples_per_epoch: 8192
+new_state_portion: 0.1
+node_merge_threshold: 0.5
+max_num_nodes: 500000
+max_children: 100
+visualize_reset_states: False
+visualize_prm: False
+compute_max_goal_dist: False
+local_planner: policy #random

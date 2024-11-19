@@ -25,17 +25,15 @@ try:
 except ValueError as e:
     print(e)
 
-
 from omni.isaac.lab.app import AppLauncher
 import hydra
 from omegaconf import DictConfig
 from utils.misc import omegaconf_to_dict
 
-
-# Create the global variable to store the simulation app
+# Declare the global variable
 simulation_app = None
 
-@hydra.main(config_name="test_pusht", config_path="../../cfg", version_base="1.2")
+@hydra.main(config_name="train_antmaze", config_path="cfg", version_base="1.2")
 def create_sim_app(cfg: DictConfig):
     global simulation_app
 
@@ -49,18 +47,21 @@ create_sim_app()
 
 
 import gymnasium as gym
-import torch
+import wandb
+from hydra.core.hydra_config import HydraConfig
 
 from omni.isaac.lab_tasks.utils import parse_env_cfg
 from omni.isaac.lab.utils import update_class_from_dict
 
+from algo.diffusion_roadmap import DiffusionRoadmap
+from algo.dppo_roadmap import DPPORoadmap
 from utils.misc import set_np_formatting, set_seed
-from tasks.push_t.pusht_env_cfg import PushTEnvCfg
+from tasks.ant_maze.antmaze_env_cfg import AntMazeEnvCfg
+from tasks.ant_maze.config.maze import MAZEA_CFG, MAZEB_CFG, MAZEC_CFG
 
-
-@hydra.main(config_name="test_pusht", config_path="../../cfg", version_base="1.2")
-def main(cfg: DictConfig):
-    """ Test the MazeBot task with random actions """
+@hydra.main(config_name="train_antmaze", config_path="cfg", version_base="1.2")
+def build_learning_env(cfg: DictConfig):
+    """ Create the environment and run the planning and learning algorithms """
     # declare the global variable
     global simulation_app
 
@@ -84,29 +85,40 @@ def main(cfg: DictConfig):
     # update the DirectRLEnvCfg with the task configuration
     update_class_from_dict(env_cfg, maze_cfg["task"])
 
+    # select the maze configuration and override the robot configuration
+    selected_maze = maze_cfg["task"]["maze"]
+    MAZE_CFG = {
+        "maze_a": MAZEA_CFG,
+        "maze_b": MAZEB_CFG,
+        "maze_c": MAZEC_CFG,
+    }
+    env_cfg.maze_cfg = MAZE_CFG[selected_maze].replace(prim_path="/World/envs/env_.*/Maze")
+
     # create DirectRLEnv
     env = gym.make(maze_cfg["task_id"], cfg=env_cfg)
 
-    # print info (this is vectorized environment)
-    print(f"[INFO]: Gym observation space: {env.observation_space}")
-    print(f"[INFO]: Gym action space: {env.action_space}")
-    # reset environment
-    env.reset()
-    # simulate environment
-    while simulation_app.is_running():
-        # run everything in inference mode
-        with torch.inference_mode():
-            # sample actions from normal distribution N(0, 1)
-            actions = env.random_actions()
-            # apply actions
-            env.step(actions)
+    output_dir = HydraConfig.get().runtime.output_dir
+    # agent = DiffusionRoadmap(cfg=maze_cfg, env=env, output_dir=output_dir)
+    agent = DPPORoadmap(cfg=maze_cfg, env=env, output_dir=output_dir)
 
-    # close the simulator
-    env.close()
+    wandb.init(
+        project="AntMaze",  # set the wandb project where this run will be logged
+        # config=OmegaConf.to_container(cfg, resolve=False),  # track hyperparameters and run metadata
+        name=output_dir,
+    )
+
+    if maze_cfg["test"]:
+        agent.restore_test(maze_cfg["load_path"])
+        agent.test()
+    else:
+        agent.train()
+
+    # close sim app
+    simulation_app.close()
 
 
 if __name__ == "__main__":
     # run the main function
-    main()
+    build_learning_env()
     # close sim app
     simulation_app.close()
