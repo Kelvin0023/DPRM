@@ -9,7 +9,10 @@ defaults:
 task_id: "Isaac-PushT-v0"
 
 # learning algorithm
-algo: "DiffQL"
+algo: "diffusion_ql"
+
+# Create a separate planning model
+separate_planning_model: False
 
 # seed - set to -1 to choose random seed
 seed: 0

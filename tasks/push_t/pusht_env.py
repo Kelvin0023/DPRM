@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from typing import Any
 
 import omni.isaac.lab.sim as sim_utils
@@ -7,8 +8,8 @@ from omni.isaac.lab.markers import VisualizationMarkers
 from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
 from omni.isaac.lab.envs.common import VecEnvObs, VecEnvStepReturn
 from omni.isaac.lab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
+from omni.isaac.lab.utils.math import quat_from_angle_axis, quat_conjugate, quat_mul, sample_uniform
 
-from tasks.ihm.ihm_env import compute_quat_angle
 from tasks.push_t.pusht_env_cfg import PushTEnvCfg
 from utils.misc import AverageScalarMeter, to_torch
 
@@ -527,7 +528,7 @@ class PushTEnv(DirectRLEnv):
     def compute_distance(self, selected_node: torch.Tensor, prm_nodes: torch.Tensor) -> torch.Tensor:
         """ Computes distance from a specific node to each node in node set """
         # Robot position distance
-        robot_pos_dist = 1.0 * torch.linalg.norm(prm_nodes[:, 0:2] - selected_node[0:2], dim=1)
+        robot_pos_dist = 0.5 * torch.linalg.norm(prm_nodes[:, 0:2] - selected_node[0:2], dim=1)
         # Robot velocity distance
         robot_vel_dist = 0.01 * torch.linalg.norm(prm_nodes[:, 2:4] - selected_node[2:4], dim=1)
         # Object position distance
@@ -636,6 +637,38 @@ def gen_rot_around_z(N: int, device: torch.device):
     return quaternions
 
 
+def compute_quat_angle(quat1, quat2):
+    # compute angle between two quaternions
+    # broadcast quat 1 to quat 2 size
+    quat1 = torch.broadcast_to(quat1, quat2.size())
+    quat_diff = quat_mul(quat1, quat_conjugate(quat2))
+    magnitude, axis = quat_to_angle_axis(quat_diff)
+    magnitude = magnitude - 2 * np.pi * (magnitude > np.pi)
+    return torch.abs(magnitude).unsqueeze(1)
+
+@torch.jit.script
+def quat_to_angle_axis(q):
+    # type: (Tensor) -> Tuple[Tensor, Tensor]
+    # Computes axis-angle representation from quaternion q
+    # q must be normalized
+    min_theta = 1e-5
+    qw, qx, qy, qz = 0, 1, 2, 3
+
+    sin_theta = torch.sqrt(1 - q[..., qw] * q[..., qw])
+    angle = 2 * torch.acos(q[..., qw])
+    angle = torch.atan2(torch.sin(angle), torch.cos(angle))  # normalize angle
+    angle = angle + 2 * np.pi * (angle < 0)
+    sin_theta_expand = sin_theta.unsqueeze(-1)
+    axis = q[..., qx:qz+1] / sin_theta_expand
+
+    mask = sin_theta > min_theta
+    default_axis = torch.zeros_like(axis)
+    default_axis[..., -1] = 1
+
+    angle = torch.where(mask, angle, torch.zeros_like(angle))
+    mask_expand = mask.unsqueeze(-1)
+    axis = torch.where(mask_expand, axis, default_axis)
+    return angle, axis
 
 
 

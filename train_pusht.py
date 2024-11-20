@@ -27,7 +27,7 @@ from hydra.core.hydra_config import HydraConfig
 from omni.isaac.lab_tasks.utils import parse_env_cfg
 from omni.isaac.lab.utils import update_class_from_dict
 
-from algo.dppo_roadmap import DPPORoadmap
+from algo.diffusion_roadmap import DiffusionRoadmap
 from utils.misc import set_np_formatting, set_seed
 from tasks.push_t.pusht_env_cfg import PushTEnvCfg
 
@@ -61,7 +61,7 @@ def build_learning_env(cfg: DictConfig):
     env = gym.make(task_cfg["task_id"], cfg=env_cfg)
 
     output_dir = HydraConfig.get().runtime.output_dir
-    agent = DPPORoadmap(cfg=task_cfg, env=env, output_dir=output_dir)
+    agent = DiffusionRoadmap(cfg=task_cfg, env=env, output_dir=output_dir)
 
     wandb.init(
         project="PushT",  # set the wandb project where this run will be logged
