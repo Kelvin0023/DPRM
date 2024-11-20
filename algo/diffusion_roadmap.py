@@ -51,7 +51,7 @@ class DiffusionRoadmap:
 
         # ---- Replay Buffer ----
         self.replay_buffer = ReplayBuffer(
-            buffer_size=100000,
+            buffer_size=5000,
             batch_size=self.cfg["policy"]["trainer"]["batch_size"],
             device=self.device,
         )
@@ -314,7 +314,7 @@ class DiffusionRoadmap:
         self.avg_max_dist = []
 
         # Initialize the graph with 5 planning epochs
-        for _ in range(5):
+        for _ in range(10):
             self.planner.run_prm()
             self.planning_steps += 1
             self.epochs.append(self.planning_steps)

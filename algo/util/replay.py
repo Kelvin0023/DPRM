@@ -119,8 +119,8 @@ class ReplayBuffer:
         obs_policy = torch.stack(obs_policy).to(self.device)
         obs_critic = torch.stack(obs_critic).to(self.device)
         action = torch.stack(action).to(self.device)
-        reward_sum = torch.stack(reward_sum).to(self.device)
-        env_not_done = torch.stack(env_not_done).to(self.device)
+        reward_sum = torch.stack(reward_sum).squeeze().to(self.device)
+        env_not_done = torch.stack(env_not_done).squeeze().to(self.device)
         obs_policy_prime = torch.stack(obs_policy_prime).to(self.device)
         obs_critic_prime = torch.stack(obs_critic_prime).to(self.device)
 
