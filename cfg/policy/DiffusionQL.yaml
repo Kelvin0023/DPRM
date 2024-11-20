@@ -38,18 +38,18 @@ model:
     activation_type: ReLU
     out_activation_type: Identity
     use_layernorm: False
-    residual_style: True
+    residual_style: False
 
   critic:
     mlp_dims: [256, 256, 256]
     activation_type: Mish
     use_layernorm: False
-    residual_style: True
+    residual_style: False
 
 
 trainer:
   # batch size
-  batch_size: 512 #1024
+  batch_size: 1024
 
   # mini epochs
   epochs: 30
@@ -69,9 +69,13 @@ trainer:
   ema_decay: 0.995
   update_ema_every: 5
 
-  eta: 5.0 #10.0
+  eta: 10.0
   tau: 0.005
   discount: 0.99
+
+  # learning rate and kl threshold
+  learning_rate: 3e-4
+  weight_decay: 0.0
 
   lr_decay: False
   lr_max_T: 1000

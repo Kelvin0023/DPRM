@@ -51,7 +51,7 @@ class DiffusionRoadmap:
 
         # ---- Replay Buffer ----
         self.replay_buffer = ReplayBuffer(
-            buffer_size=5000,
+            buffer_size=50000,
             batch_size=self.cfg["policy"]["trainer"]["batch_size"],
             device=self.device,
         )
@@ -405,7 +405,7 @@ class DiffusionRoadmap:
         walks, obs_policy_buf, obs_critic_buf, act_buf, state_buf, goal_buf = self.planner.perform_search(
             critic=self.model_target.critic,
             num_searches=100,
-            length=50,
+            length=100,
             search_for_planner=False
         )
 

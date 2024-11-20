@@ -3,6 +3,7 @@ import numpy as np
 from torch.nn import functional as F
 
 from algo.model.auxiliary import EMA
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from algo.util.scheduler import CosineAnnealingWarmupRestarts
 
 
@@ -63,37 +64,55 @@ class DiffQLTrainer:
         # Gradient clipping
         self.max_grad_norm = cfg.get("max_grad_norm", None)
 
-        # Optimizers
-        self.actor_optimizer = torch.optim.AdamW(
-            self.model.actor.parameters(),
-            lr=cfg["actor_lr"],
-            weight_decay=cfg["actor_weight_decay"],
+        # # Optimizers
+        # self.actor_optimizer = torch.optim.AdamW(
+        #     self.model.actor.parameters(),
+        #     lr=cfg["actor_lr"],
+        #     weight_decay=cfg["actor_weight_decay"],
+        # )
+        # self.critic_optimizer = torch.optim.AdamW(
+        #     self.model.critic.parameters(),
+        #     lr=cfg["critic_lr"],
+        #     weight_decay=cfg["critic_weight_decay"],
+        # )
+
+        # # Cosine scheduler with linear warmup
+        # self.actor_lr_scheduler = CosineAnnealingWarmupRestarts(
+        #     self.actor_optimizer,
+        #     first_cycle_steps=cfg["actor_lr_scheduler"]["first_cycle_steps"],
+        #     cycle_mult=1.0,
+        #     max_lr=cfg["actor_lr"],
+        #     min_lr=cfg["actor_lr_scheduler"]["min_lr"],
+        #     warmup_steps=cfg["actor_lr_scheduler"]["warmup_steps"],
+        #     gamma=1.0,
+        # )
+        # self.critic_lr_scheduler = CosineAnnealingWarmupRestarts(
+        #     self.critic_optimizer,
+        #     first_cycle_steps=cfg["critic_lr_scheduler"]["first_cycle_steps"],
+        #     cycle_mult=1.0,
+        #     max_lr=cfg["critic_lr"],
+        #     min_lr=cfg["critic_lr_scheduler"]["min_lr"],
+        #     warmup_steps=cfg["critic_lr_scheduler"]["warmup_steps"],
+        #     gamma=1.0,
+        # )
+
+        self.last_lr = cfg["learning_rate"]
+        self.weight_decay = cfg["weight_decay"]
+
+        # optimizer
+        self.actor_optimizer = torch.optim.Adam(
+            self.model.actor.parameters(), self.last_lr, weight_decay=self.weight_decay
         )
-        self.critic_optimizer = torch.optim.AdamW(
-            self.model.critic.parameters(),
-            lr=cfg["critic_lr"],
-            weight_decay=cfg["critic_weight_decay"],
+        self.critic_optimizer = torch.optim.Adam(
+            self.model.critic.parameters(), self.last_lr, weight_decay=self.weight_decay
         )
 
-        # Cosine scheduler with linear warmup
-        self.actor_lr_scheduler = CosineAnnealingWarmupRestarts(
-            self.actor_optimizer,
-            first_cycle_steps=cfg["actor_lr_scheduler"]["first_cycle_steps"],
-            cycle_mult=1.0,
-            max_lr=cfg["actor_lr"],
-            min_lr=cfg["actor_lr_scheduler"]["min_lr"],
-            warmup_steps=cfg["actor_lr_scheduler"]["warmup_steps"],
-            gamma=1.0,
-        )
-        self.critic_lr_scheduler = CosineAnnealingWarmupRestarts(
-            self.critic_optimizer,
-            first_cycle_steps=cfg["critic_lr_scheduler"]["first_cycle_steps"],
-            cycle_mult=1.0,
-            max_lr=cfg["critic_lr"],
-            min_lr=cfg["critic_lr_scheduler"]["min_lr"],
-            warmup_steps=cfg["critic_lr_scheduler"]["warmup_steps"],
-            gamma=1.0,
-        )
+        # learning rate decay
+        self.lr_decay = cfg["lr_decay"]
+        if self.lr_decay:
+            self.lr_max_T = cfg["lr_max_T"]
+            self.actor_lr_scheduler = CosineAnnealingLR(self.actor_optimizer, T_max=self.lr_max_T, eta_min=0.)
+            self.critic_lr_scheduler = CosineAnnealingLR(self.critic_optimizer, T_max=self.lr_max_T, eta_min=0.)
 
     def step_ema(self):
         if self.step < self.step_start_ema:
@@ -166,7 +185,6 @@ class DiffQLTrainer:
                 torch.nn.utils.clip_grad_norm_(self.model.critic.parameters(), self.max_grad_norm)
             self.critic_optimizer.step()
 
-
             """ Policy Training """
             bc_loss = self.model.policy_loss(x=sampled_act_chunk, cond={"state": norm_obs_policy})
             bc_loss = torch.mean(bc_loss)
@@ -218,9 +236,12 @@ class DiffQLTrainer:
             metrics['ql_loss'].append(q_loss)
             metrics['critic_loss'].append(critic_loss)
 
-        # Update lr, min_sampling_std
-        self.actor_lr_scheduler.step()
-        self.critic_lr_scheduler.step()
+        # # Update lr, min_sampling_std
+        # self.actor_lr_scheduler.step()
+        # self.critic_lr_scheduler.step()
+        if self.lr_decay:
+            self.actor_lr_scheduler.step()
+            self.critic_lr_scheduler.step()
 
         return metrics
 

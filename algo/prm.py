@@ -59,11 +59,12 @@ class PRM:
         self.max_dist_in_goal = torch.empty(
             (0, 1),
             dtype=torch.float,
-        ) # store the maximum distance the node could reach within the goal space
-        self.next_node = torch.empty(
-            (0, 1),
-            dtype=torch.int,
-        ) # store the next node to to go which maximize the distance in goal space
+        )  # store the maximum distance the node could reach within the goal space
+        if self.compute_max_goal_dist:
+            self.next_node = torch.empty(
+                (0, 1),
+                dtype=torch.int,
+            )  # store the next node to to go which maximize the distance in goal space
         self.prm_obs_policy_buf = torch.empty(
             (0, self.max_children_per_node, self.prm_rollout_len, self.env.cfg.num_observations)
         )  # Tensor to store observation lists along the current node to its children, default to -inf
@@ -98,7 +99,8 @@ class PRM:
         self.prm_children = torch.tensor(graph["prm_children"])
         self.children_counter = torch.tensor(graph["children_counter"])
         self.max_dist_in_goal = torch.tensor(graph["max_dist_in_goal"])
-        self.next_node = torch.tensor(graph["next_node"])
+        if self.compute_max_goal_dist:
+            self.next_node = torch.tensor(graph["next_node"])
         self.prm_obs_policy_buf = torch.tensor(graph["prm_obs_policy_buf"])
         self.prm_obs_critic_buf = torch.tensor(graph["prm_obs_critic_buf"])
         self.prm_action_buf = torch.tensor(graph["prm_action_buf"])
@@ -111,7 +113,7 @@ class PRM:
             "prm_children": self.prm_children.cpu().numpy(),
             "children_counter": self.children_counter.cpu().numpy(),
             "max_dist_in_goal": self.max_dist_in_goal.cpu().numpy(),
-            "next_node": self.next_node.cpu().numpy(),
+            "next_node": self.next_node.cpu().numpy() if self.compute_max_goal_dist else None,
             "prm_obs_policy_buf": self.prm_obs_policy_buf.cpu().numpy(),
             "prm_obs_critic_buf": self.prm_obs_critic_buf.cpu().numpy(),
             "prm_action_buf": self.prm_action_buf.cpu().numpy(),
@@ -146,7 +148,8 @@ class PRM:
         self.prm_children = torch.cat((self.prm_children, new_prm_children), dim=0)
         self.children_counter = torch.cat((self.children_counter, torch.zeros((num_nodes, 1), dtype=torch.int)), dim=0)
         self.max_dist_in_goal = torch.cat((self.max_dist_in_goal, torch.zeros((num_nodes, 1), dtype=torch.float)), dim=0)
-        self.next_node = torch.cat((self.next_node, torch.zeros((num_nodes, 1), dtype=torch.int)), dim=0)
+        if self.compute_max_goal_dist:
+            self.next_node = torch.cat((self.next_node, torch.zeros((num_nodes, 1), dtype=torch.int)), dim=0)
         self.prm_obs_policy_buf = torch.cat((self.prm_obs_policy_buf, new_prm_obs_policy_buf), dim=0)
         self.prm_obs_critic_buf = torch.cat((self.prm_obs_critic_buf, new_prm_obs_critic_buf), dim=0)
         self.prm_action_buf = torch.cat((self.prm_action_buf, new_prm_action_buf), dim=0)
