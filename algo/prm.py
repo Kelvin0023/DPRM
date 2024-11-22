@@ -532,15 +532,8 @@ class PRM:
 
         # Sample nodes in PRM to start the search
         # Collect the nodes in the PRM with at least one children
-        # nodes_with_children_index = torch.nonzero(self.children_counter.squeeze() > 0).squeeze()
-        # self.sampled_idx = nodes_with_children_index[torch.randint(0, nodes_with_children_index.size(0), (num_searches,))]
-        # _, max_dist_idx = torch.topk(self.max_dist_in_goal.squeeze(), num_searches)
-        # self.sampled_idx = max_dist_idx
-        if self.prm_q.size(0) < num_searches * 3:
-            _, max_dist_idx = torch.topk(self.max_dist_in_goal.squeeze(), self.prm_q.size(0))
-        else:
-            _, max_dist_idx = torch.topk(self.max_dist_in_goal.squeeze(), num_searches * 3)
-        self.sampled_idx = max_dist_idx[torch.randint(0, max_dist_idx.size(0), (num_searches,))]
+        nodes_with_children_index = torch.nonzero(self.children_counter.squeeze() > 0).squeeze()
+        self.sampled_idx = nodes_with_children_index[torch.randint(0, nodes_with_children_index.size(0), (num_searches,))]
 
         # Initialize the mask to keep track of walks that should stop
         zero_children_mask = torch.zeros(num_searches, dtype=torch.bool)
@@ -707,6 +700,7 @@ class PRM:
         if search_for_planner:
             goal_size = self.env.planner_goal_dim
         elif hasattr(self.env, "goal"):
+            policy_extracted_goal_start, policy_extracted_goal_end = self.env.cfg.extracted_goal_idx_policy
             policy_goal_start, policy_goal_end = self.env.cfg.goal_idx_policy
             critic_goal_start, critic_goal_end = self.env.cfg.goal_idx_critic
             goal_size = policy_goal_end - policy_goal_start
@@ -734,6 +728,7 @@ class PRM:
                 if search_for_planner:
                     # Add goal to the goal buffer
                     new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), 1).cpu()
+                    # new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end]
                     updated_goal_buf = torch.cat((updated_goal_buf, new_goal), dim=0)
                 elif hasattr(self.env, "goal"):
                     # Add goal to the goal buffer

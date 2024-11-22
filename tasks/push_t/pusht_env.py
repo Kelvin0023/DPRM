@@ -50,6 +50,7 @@ class PushTEnv(DirectRLEnv):
         self.goal_pos_xy = torch.zeros((self.num_envs, 2), dtype=torch.float, device=self.device)
         self.goal_rot = torch.zeros((self.num_envs, 4), dtype=torch.float, device=self.device)
         self.goal_rot[:, 0] = 1.0
+        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot], dim=1)
 
         # initialize goal marker
         self.goal_markers = VisualizationMarkers(self.cfg.goal_object_cfg)
@@ -128,8 +129,7 @@ class PushTEnv(DirectRLEnv):
                 self.object_rotation,  # object orientation (4)
                 self.object_lin_vel_xy,  # object linear velocity (2)
                 self.object_ang_vel,  # object angular velocity (3)
-                self.goal_pos_xy,  # goal x and y coordinate (2)
-                self.goal_rot,  # goal orientation (4)
+                self.goal,  # goal x and y coordinate and orientation (2+4)
             ),
             dim=-1,
         )
@@ -230,7 +230,7 @@ class PushTEnv(DirectRLEnv):
             # reset the robot to the start point with zero velocity
             robot_state = torch.zeros((len(env_ids), 4), device=self.device)
             # sample random position for object
-            obj_pos_xy = torch.tensor([0, 0.1], device=self.device).repeat(len(env_ids), 1)
+            obj_pos_xy = torch.tensor([-0.2, 0.2], device=self.device).repeat(len(env_ids), 1)
             obj_rot = torch.tensor([1, 0, 0, 0], device=self.device).repeat(len(env_ids), 1)
             obj_lin_vel_xy = torch.zeros((len(env_ids), 2), device=self.device)
             obj_ang_vel = torch.zeros((len(env_ids), 3), device=self.device)
@@ -271,9 +271,10 @@ class PushTEnv(DirectRLEnv):
             ],
             dim=1
         )
-        goal_pos += self.scene.env_origins[env_ids]  # add the origin of each environment
+        goal_pos += self.scene.env_origins  # add the origin of each environment
         # sample random goal orientation
         self.goal_rot[env_ids] = gen_rot_around_z(len(env_ids), device=self.device)
+        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot], dim=1)
         self.goal_markers.visualize(goal_pos, self.goal_rot)
 
     def step_without_reset(self, action: torch.Tensor) -> VecEnvStepReturn:
@@ -504,9 +505,10 @@ class PushTEnv(DirectRLEnv):
             ],
             dim=1
         )
-        goal_pos += self.scene.env_origins[env_ids]  # add the origin of each environment
+        goal_pos += self.scene.env_origins  # add the origin of each environment
         # set goal orientation
         self.goal_rot[env_ids] = gen_rot_around_z(len(env_ids), device=self.device)
+        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot], dim=1)
         self.goal_markers.visualize(goal_pos, self.goal_rot)
 
 
