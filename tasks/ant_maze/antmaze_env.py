@@ -17,7 +17,7 @@ try:
 except ImportError:
     pass
 
-from tasks.ihm.ihm_env import compute_quat_angle
+from tasks.push_t.pusht_env import compute_quat_angle
 from tasks.ant_maze.antmaze_env_cfg import AntMazeEnvCfg
 from tasks.ant_maze.gen_maze_states import MazeA, MazeB, MazeC, generate
 from utils.misc import AverageScalarMeter, to_torch

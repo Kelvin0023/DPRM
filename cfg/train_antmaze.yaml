@@ -1,7 +1,7 @@
 defaults:
   - /task/AntMaze
   - /planner/PRM_AntMaze
-  - /policy/DPPO_AntMaze
+  - /policy/DiffusionQL
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -9,7 +9,7 @@ defaults:
 task_id: "Isaac-AntMaze-v0"
 
 # learning algorithm
-algo: "DPPO"
+algo: "diffusion_ql"
 
 # Create a separate planning model
 separate_planning_model: False
@@ -24,7 +24,7 @@ gpu: '0'
 disable_fabric: False
 
 # environment number
-num_envs: 4096
+num_envs: 8192
 
 # disable graphics
 headless: True

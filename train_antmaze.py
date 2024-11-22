@@ -54,7 +54,6 @@ from omni.isaac.lab_tasks.utils import parse_env_cfg
 from omni.isaac.lab.utils import update_class_from_dict
 
 from algo.diffusion_roadmap import DiffusionRoadmap
-from algo.dppo_roadmap import DPPORoadmap
 from utils.misc import set_np_formatting, set_seed
 from tasks.ant_maze.antmaze_env_cfg import AntMazeEnvCfg
 from tasks.ant_maze.config.maze import MAZEA_CFG, MAZEB_CFG, MAZEC_CFG
@@ -99,7 +98,7 @@ def build_learning_env(cfg: DictConfig):
 
     output_dir = HydraConfig.get().runtime.output_dir
     # agent = DiffusionRoadmap(cfg=maze_cfg, env=env, output_dir=output_dir)
-    agent = DPPORoadmap(cfg=maze_cfg, env=env, output_dir=output_dir)
+    agent = DiffusionRoadmap(cfg=maze_cfg, env=env, output_dir=output_dir)
 
     wandb.init(
         project="AntMaze",  # set the wandb project where this run will be logged
