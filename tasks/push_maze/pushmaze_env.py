@@ -450,7 +450,7 @@ class PushMazeEnv(DirectRLEnv):
 
     def q_to_goal(self, q: torch.Tensor) -> torch.Tensor:
         """ Extract goal position from q_state """
-        goal = q[:, :2]  # extract pos
+        goal = q[:, -2:]  # extract object x and y position
         return goal
 
     def compute_goal_distance(self, prm_nodes: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
@@ -477,11 +477,15 @@ class PushMazeEnv(DirectRLEnv):
     def sample_random_nodes(self, N: int = 32) -> torch.Tensor:
         """ Uniformly sample initial collision-free nodes to be added to the graph """
         # Sample valid robot positions in maze
-        robot_init_states = generate(self.maze_object, nsample=N, pad=0.05)
-        q_robot = to_torch(robot_init_states, device=self.device)[:, :2]
-        # Sample valid object positions
         object_init_states = generate(self.maze_object, nsample=N, pad=0.1)
         q_object = to_torch(object_init_states, device=self.device)[:, :2]
+        # Sample valid object positions by adding random offset to the robot position
+        q_robot = q_object + torch_rand_float(
+            -0.1,
+            0.1,
+            (N, 2),
+            device=self.device,
+        )
         # Sample random robot velocity within velocity limits
         alpha = torch_rand_float(
             0.0,
