@@ -996,7 +996,6 @@ class PRM:
         act_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
 
         for i in range(num_demos):
-            print(f"***Start extracting demo {i}***")
             results = self.extract_one_demo(max_len, num_parents)
 
             if results is not None:
@@ -1034,7 +1033,6 @@ class PRM:
         dist_list = []
 
         for step in range(max_len):
-            print(f"---Step {step}---")
             if step == 0:
                 # Extract top k parents with the largest goal_dist
                 dist_thres = 0
