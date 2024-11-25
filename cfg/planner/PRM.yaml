@@ -9,7 +9,7 @@ max_children: 50 # 20
 visualize_reset_states: False
 visualize_prm: False
 compute_max_goal_dist: False
-local_planner: policy #random
+local_planner: policy
 
 #rollout_len: 8
 #samples_per_epoch: 1024

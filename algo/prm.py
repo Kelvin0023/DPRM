@@ -508,9 +508,30 @@ class PRM:
 
                 # draw "+" marker for the new node
                 point_list_node_0 = [(p[0] - 0.01, p[1], 0.01), (p[0], p[1] - 0.01, 0.01)] + self.env.scene.env_origins[0].cpu().numpy()
-                point_list_node_1 = [(p[0] + 0.01, p[1], 0.01), (p[0], p[1] - 0.01, 0.01)] + self.env.scene.env_origins[0].cpu().numpy()
+                point_list_node_1 = [(p[0] + 0.01, p[1], 0.01), (p[0], p[1] + 0.01, 0.01)] + self.env.scene.env_origins[0].cpu().numpy()
                 node_colors = [node_color for _ in range(2)]
                 node_widths = [1.0 for _ in range(2)]
+                draw.draw_lines(point_list_node_0, point_list_node_1, node_colors, node_widths)
+        except:
+            pass
+
+    def _visualize_nodes(
+            self,
+            node: torch.Tensor,
+            node_color: list = [0, 0, 1, 1]  # blue
+    ) -> None:
+        """
+        Debug visualization: Draw node for visualization (works only for maze env)
+        """
+        try:
+            if self.visualize_prm:
+                node_state = node.cpu().numpy()
+
+                # draw "+" marker for the selected node
+                point_list_node_0 = [(node_state[0] - 0.02, node_state[1], 0.02), (node_state[0], node_state[1] - 0.02, 0.02)] + self.env.scene.env_origins[0].cpu().numpy()
+                point_list_node_1 = [(node_state[0] + 0.02, node_state[1], 0.02), (node_state[0], node_state[1] + 0.02, 0.02)] + self.env.scene.env_origins[0].cpu().numpy()
+                node_colors = [node_color for _ in range(2)]
+                node_widths = [3.0 for _ in range(2)]
                 draw.draw_lines(point_list_node_0, point_list_node_1, node_colors, node_widths)
         except:
             pass
@@ -968,6 +989,210 @@ class PRM:
         else:
             return sampled_obs_policy.to(self.device), sampled_obs_critic.to(self.device), sampled_action_chunk.to(
                 self.device), sampled_state.to(self.device), None
+
+    def extract_demos(self, num_demos: int = 2, max_len: int = 10, num_parents: int = 5):
+        obs_policy_buf = torch.empty((0, self.env.cfg.num_observations))
+        obs_critic_buf = torch.empty((0, self.env.cfg.num_states))
+        act_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
+
+        for i in range(num_demos):
+            print(f"***Start extracting demo {i}***")
+            results = self.extract_one_demo(max_len, num_parents)
+
+            if results is not None:
+                extracted_obs_policy, extracted_obs_critic, extracted_act = results
+                obs_policy_buf = torch.cat((obs_policy_buf, extracted_obs_policy), dim=0)
+                obs_critic_buf = torch.cat((obs_critic_buf, extracted_obs_critic), dim=0)
+                act_buf = torch.cat((act_buf, extracted_act), dim=0)
+
+        return obs_policy_buf, obs_critic_buf, act_buf
+
+    def extract_one_demo(self, max_len, num_parents):
+        obs_policy_buf = torch.empty((0, self.env.cfg.num_observations))
+        obs_critic_buf = torch.empty((0, self.env.cfg.num_states))
+        act_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
+
+        # Sample a random node in PRM that serves as goal
+        goal_node_idx = torch.randint(0, self.prm_q.size(0), (1,)).item()
+        node_parent_idx_list = self.prm_parents[goal_node_idx]
+
+        # visualize the goal node
+        if self.visualize_prm:
+            self._visualize_nodes(node=self.prm_q[goal_node_idx], node_color=[1, 0, 0, 1])
+
+        # Extract the goal and extracted goal indices
+        new_goal = self.env.q_to_goal(self.prm_q[goal_node_idx].unsqueeze(0))
+        policy_goal_start, policy_goal_end = self.env.cfg.goal_idx_policy
+        critic_goal_start, critic_goal_end = self.env.cfg.goal_idx_critic
+
+        # Terminate if the node has no parent
+        if len(node_parent_idx_list) == 0:
+            return None
+
+        # Initialize the lists to keep track of the parents and children
+        nodes_list = []
+        dist_list = []
+
+        for step in range(max_len):
+            print(f"---Step {step}---")
+            if step == 0:
+                # Extract top k parents with the largest goal_dist
+                dist_thres = 0
+                results = self.select_best_parents(
+                    goal_node_idx,
+                    node_parent_idx_list,
+                    dist_thres,
+                    num_parents
+                )
+                if results is None:
+                    break
+                else:
+                    selected_parents_idx, dist_parents = results
+
+                    # visualize the selected node
+                    if self.visualize_prm:
+                        for i in range(len(selected_parents_idx)):
+                            self._visualize_nodes(node=self.prm_q[selected_parents_idx[i]], node_color=[0, 0, 1, 1])
+
+                    # Extract the stored data
+                    (
+                        obs_policy,
+                        obs_critic,
+                        actions
+                    ) = self.find_stored_data(goal_node_idx, selected_parents_idx)
+                    # Update the buffer
+                    obs_policy_buf = torch.cat((obs_policy_buf, obs_policy), dim=0)
+                    obs_critic_buf = torch.cat((obs_critic_buf, obs_critic), dim=0)
+                    act_buf = torch.cat((act_buf, actions), dim=0)
+                    # Update the lists
+                    nodes_list = selected_parents_idx
+                    dist_list = dist_parents.tolist()
+                    assert len(nodes_list) == len(dist_list)
+
+            else:
+                # Create buffers for the next time step
+                next_nodes_list = []
+                next_dist_list = []
+
+                for i in range(len(nodes_list)):
+                    node_child_idx = nodes_list[i]
+                    node_parent_idx_list = self.prm_parents[node_child_idx]
+
+                    dist_thres = dist_list[i]
+                    results = self.select_best_parents(
+                        goal_node_idx,
+                        node_parent_idx_list,
+                        dist_thres,
+                        num_parents
+                    )
+                    if results is None:
+                        break
+                    else:
+                        selected_parents_idx, dist_parents = results
+
+                        # visualize the selected node
+                        if self.visualize_prm:
+                            for i in range(len(selected_parents_idx)):
+                                self._visualize_nodes(node=self.prm_q[selected_parents_idx[i]], node_color=[0, 0, 1, 1])
+
+                        # Extract the stored data
+                        (
+                            obs_policy,
+                            obs_critic,
+                            actions
+                        ) = self.find_stored_data(node_child_idx, selected_parents_idx)
+                        # Update the buffer
+                        obs_policy_buf = torch.cat((obs_policy_buf, obs_policy), dim=0)
+                        obs_critic_buf = torch.cat((obs_critic_buf, obs_critic), dim=0)
+                        act_buf = torch.cat((act_buf, actions), dim=0)
+                        # Update the lists
+                        next_nodes_list += selected_parents_idx
+                        next_dist_list += dist_parents.tolist()
+                        assert len(next_nodes_list) == len(next_dist_list)
+
+                # Reset the lists
+                nodes_list = next_nodes_list
+                dist_list = next_dist_list
+
+
+        # Update the obs buffers with the new goal
+        obs_policy_buf[:, policy_goal_start:policy_goal_end] = new_goal
+        obs_critic_buf[:, critic_goal_start:critic_goal_end] = new_goal
+
+        return obs_policy_buf, obs_critic_buf, act_buf
+
+    # def select_best_parents(self, node_idx, parent_idx_list, dist_thres, num_parents):
+    #     # Compute goal_dist between the node and its parents
+    #     goal_dist = self.env.compute_goal_distance(prm_nodes=self.prm_q[parent_idx_list], goal=self.prm_q[node_idx])
+    #     # Return None if the dist_thres is not satisfied
+    #     if goal_dist.max() < dist_thres:
+    #         return None
+    #     # Reduce the number of parents to extract if we do not have enough parents
+    #     if len(goal_dist) < num_parents:
+    #         num_parents = len(goal_dist)
+    #     # Select (num_parents) nodes with the highest goal_dist
+    #     top_parents_dist, selected_parents_list_idx = torch.topk(goal_dist, num_parents)
+    #     # Remove the nodes if the dist_thres is not satisfied
+    #     selected_parents_list_idx = selected_parents_list_idx[goal_dist[selected_parents_list_idx] > dist_thres]
+    #     print("Debug: top_parents_dist: ", top_parents_dist)
+    #     print("Debug: selected_parents_list_idx: ", selected_parents_list_idx)
+    #     print("Debug: goal_dist[selected_parents_list_idx] > dist_thres:", goal_dist[selected_parents_list_idx] > dist_thres)
+    #     print("Debug: goal_dist[selected_parents_list_idx]: ", goal_dist[selected_parents_list_idx])
+    #     top_parents_dist = top_parents_dist[goal_dist[selected_parents_list_idx] >= dist_thres]
+    #     # Extract the index of parent nodes in the graph
+    #     parents_idx = [parent_idx_list[i] for i in selected_parents_list_idx.tolist()]
+    #     return parents_idx, top_parents_dist
+
+    def select_best_parents(self, node_idx, parent_idx_list, dist_thres, num_parents):
+        # Compute goal_dist between the node and its parents
+        goal_dist = self.env.compute_goal_distance(prm_nodes=self.prm_q[parent_idx_list], goal=self.prm_q[node_idx])
+
+        # Return None if the dist_thres is not satisfied or there are no parents for the current node
+        if goal_dist.numel() == 0 or goal_dist.max() < dist_thres:
+            return None
+
+        # Reduce the number of parents to extract if we do not have enough parents
+        if len(goal_dist) < num_parents:
+            num_parents = len(goal_dist)
+
+        # Select (num_parents) nodes with the highest goal_dist
+        top_parents_dist, selected_parents_list_idx = torch.topk(goal_dist, num_parents)
+
+        # Filter indices where goal_dist is greater than dist_thres
+        valid_mask = goal_dist[selected_parents_list_idx] > dist_thres
+        selected_parents_list_idx = selected_parents_list_idx[valid_mask]
+        top_parents_dist = top_parents_dist[valid_mask]
+
+        # Extract the index of parent nodes in the graph
+        parents_idx = [parent_idx_list[i] for i in selected_parents_list_idx.tolist()]
+        return parents_idx, top_parents_dist
+
+    def find_stored_data(self, child_node_idx, parent_node_idx_list):
+        obs_policy_buf = torch.empty((0, self.env.cfg.num_observations))
+        obs_critic_buf = torch.empty((0, self.env.cfg.num_states))
+        act_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
+
+        # Find the index of node_idx in each child list of the parents
+        for i in range(len(parent_node_idx_list)):
+            # find the index of node_idx in the child list of the parent
+            child_list = self.prm_children[parent_node_idx_list[i]]
+            # print("Debug: child_list: ", child_list)
+            # print("Debug: node_idx: ", child_node_idx)
+            child_idx = torch.nonzero(child_list == child_node_idx, as_tuple=False)[0].item()
+            # Extract the obs and action chunks
+            obs_policy_buf = torch.cat(
+                (obs_policy_buf, self.prm_obs_policy_buf[parent_node_idx_list[i], child_idx, 0, :].unsqueeze(0)),
+                dim=0
+            )
+            obs_critic_buf = torch.cat(
+                (obs_critic_buf, self.prm_obs_critic_buf[parent_node_idx_list[i], child_idx, 0, :].unsqueeze(0)),
+                dim=0
+            )
+            act_buf = torch.cat(
+                (act_buf, self.prm_action_buf[parent_node_idx_list[i], child_idx, :, :].unsqueeze(0)),
+                dim=0
+            )
+        return obs_policy_buf, obs_critic_buf, act_buf
 
 
 def find_last_valid_indices(obs_policy_buf):
