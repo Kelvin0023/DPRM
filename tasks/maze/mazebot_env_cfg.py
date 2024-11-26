@@ -75,7 +75,7 @@ class MazeBotEnvCfg(DirectRLEnvCfg):
     kd = 2
 
     # reward and termination
-    reward_type = "dense"  # dense or sparse
+    reward_type = "mixed"  # sparse, dense, or mixed
     dense_reward_scale = 1.0  # dense reward for moving towards the goal position
     success_reward_scale = 1.0  # sparse reward for reaching the goal position
     at_goal_threshold = 0.1  # distance to goal to consider as success

@@ -16,7 +16,7 @@ dof_vel_lower_limit: [-1.0, -1.0]
 dof_vel_upper_limit: [1.0, 1.0]
 
 # reward and termination
-reward_type: dense
+reward_type: mixed   # sparse, dense, or mixed
 dense_reward_scale: 1.0
 success_reward_scale: 10.0
 at_goal_threshold: 0.1

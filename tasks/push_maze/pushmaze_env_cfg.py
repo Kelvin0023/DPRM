@@ -30,7 +30,7 @@ def fetch_repo_root(file_path, repo_name):
 
 try:
     current_file_path = os.path.abspath(__file__)
-    repo_name = "diffuse-plan-learn"
+    repo_name = "DPRM"
     repo_root = fetch_repo_root(current_file_path, repo_name)
     sys.path.append(repo_root)
     print(f"Repository root '{repo_root}' added to Python path.")
@@ -57,21 +57,22 @@ class PushMazeEnvCfg(DirectRLEnvCfg):
     decimation = 2
     episode_length_s = 10.0
     num_actions = 2
-    num_observations = 8
-    num_states = 8
-    num_q_space = 6
+    num_observations = 17
+    num_states = 17
+    num_q_space = 15
     max_episode_steps = 600
 
     # PRM config for observation update
-    extracted_goal_idx_policy = (0, 2)  # indices of the current observation (robot_pos)
-    goal_idx_policy = (4, 6)  # indices of the goal observation (goal_pos)
-    extracted_goal_idx_critic = (0, 2)  # indices of the current critic observation (robot_pos)
-    goal_idx_critic = (4, 6)  # indices of the goal critic observation (goal_pos)
+    extracted_goal_idx_policy = (4, 6)  # indices of the current observation (obj_pos)
+    goal_idx_policy = (15, 17)  # indices of the goal observation (goal_pos)
+    extracted_goal_idx_critic = (4, 6)  # indices of the current critic observation (obj_pos)
+    goal_idx_critic = (15, 17)  # indices of the goal critic observation (goal_pos)
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
         dt=1/60,
         render_interval=decimation,
+        physx=sim_utils.PhysxCfg(gpu_max_rigid_patch_count=50 * 2 ** 15)
     )
 
     # maze and robot
@@ -115,10 +116,11 @@ class PushMazeEnvCfg(DirectRLEnvCfg):
     )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=6.0, replicate_physics=True)
 
     # PRM valid state limits
-    valid_robot_object_thres = 0.3
+    valid_robot_object_thres = 0.2
+    height_limit = 0.0455
     dof_vel_lower_limit = [-1.0, -1.0]
     dof_vel_upper_limit = [1.0, 1.0]
 
@@ -126,12 +128,12 @@ class PushMazeEnvCfg(DirectRLEnvCfg):
     kp = 5
     kd = 2
 
-    # reward and termination
-    reward_type = "dense"  # dense or sparse
+    # reward and success criteria
+    reward_type = "sparse"  # dense, sparse or mixed
     dense_reward_scale = 1.0  # dense reward for moving the object towards the goal position
     success_reward_scale = 10.0  # sparse reward for pushing object to the goal position
     at_goal_threshold = 0.1  # distance to goal to consider as success
-    robot_object_thres = 0.5  # maximum distance between the object and robot
+    robot_object_thres = 0.3  # maximum distance between the object and robot
 
     # domain reset and randomization config
     events: EventCfg = EventCfg()

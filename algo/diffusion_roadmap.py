@@ -14,7 +14,7 @@ from algo.model.diffusion_ql import DiffusionQL
 from algo.model.mlp_diffusion import DiffusionMLP
 from trainer.train_diffusion_ql import DiffQLTrainer
 from algo.util.running_mean_std import RunningMeanStd
-from algo.util.replay import ReplayBuffer
+from algo.util.replay import ReplayBuffer, BCReplayBuffer
 from utils.misc import AverageScalarMeter
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,11 @@ class DiffusionRoadmap:
         self.value_rms = RunningMeanStd((1,)).to(self.device)
 
         # ---- Replay Buffer ----
+        self.bc_replay_buffer = BCReplayBuffer(
+            buffer_size=10000,
+            batch_size=self.cfg["policy"]["trainer"]["batch_size"],
+            device=self.device,
+        )
         self.replay_buffer = ReplayBuffer(
             buffer_size=50000,
             batch_size=self.cfg["policy"]["trainer"]["batch_size"],
@@ -127,6 +132,7 @@ class DiffusionRoadmap:
         self.trainer = DiffQLTrainer(
             cfg=model_trainer_cfg,
             replay_buffer=self.replay_buffer,
+            bc_replay_buffer=self.bc_replay_buffer,
             model=self.model,
             model_target=self.model_target,
             obs_policy_rms=self.obs_policy_rms,
@@ -140,7 +146,7 @@ class DiffusionRoadmap:
         self.planner = hydra.utils.get_class(planner_cfg["_target_"])(
             cfg=planner_cfg,
             env=env,
-            model_target=self.model_target,
+            model_target=self.model,
             obs_policy_rms=self.obs_policy_rms,
             obs_critic_rms=self.obs_critic_rms,
             value_rms=self.value_rms,
@@ -339,6 +345,10 @@ class DiffusionRoadmap:
                     running_mean_term = self.num_eval_episodes.get_mean()
                     mean_success_rate = running_mean_success / running_mean_term
                     wandb.log({"eval_success_rate/step": mean_success_rate}, step=self.agent_steps)
+
+            obs_policy_demo, obs_critic_demo, act_demo = self.planner.extract_demos(num_demos=50, max_len=50, num_parents=3)
+            self.bc_replay_buffer.store(obs_policy_demo, act_demo)
+
             self.epoch_num += 1
 
             if self.cfg["save_prm"]:
@@ -401,11 +411,11 @@ class DiffusionRoadmap:
         self.set_eval()
 
         # Extracted walks w.r.t the task critic
-        self.env.reset_dist_type = "train"
+        self.env.reset_dist_type = "eval"
         walks, obs_policy_buf, obs_critic_buf, act_buf, state_buf, goal_buf = self.planner.perform_search(
             critic=self.model_target.critic,
             num_searches=100,
-            length=100,
+            length=50,
             search_for_planner=False
         )
 
@@ -427,6 +437,9 @@ class DiffusionRoadmap:
             obs_policy_prime_buf,
             obs_critic_prime_buf
         )
+
+        # obs_policy_demo, obs_critic_demo, act_demo = self.planner.extract_demos(num_demos=50, max_len=20, num_parents=3)
+        # self.bc_replay_buffer.store(obs_policy_demo, act_demo)
 
         self.data_collect_time += time.time() - _t
 

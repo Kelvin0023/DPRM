@@ -13,6 +13,7 @@ class DiffQLTrainer:
         self,
         cfg,
         replay_buffer,
+        bc_replay_buffer,
         model,
         model_target,
         obs_policy_rms,
@@ -48,6 +49,7 @@ class DiffQLTrainer:
 
         # replay buffer
         self.replay_buffer = replay_buffer
+        self.bc_replay_buffer = bc_replay_buffer
 
         # whether to apply max q backup
         self.max_q_backup = cfg["max_q_backup"]
@@ -133,6 +135,11 @@ class DiffQLTrainer:
                 sampled_obs_critic_prime
             ) = self.replay_buffer.sample()
 
+            (
+                sampled_obs_policy_demo,
+                sampled_act_chunk_demo,
+            ) = self.bc_replay_buffer.sample()
+
             # normalize observations
             norm_obs_policy = self.obs_policy_rms(sampled_obs_policy)
             norm_obs_critic = self.obs_critic_rms(sampled_obs_critic)
@@ -186,8 +193,14 @@ class DiffQLTrainer:
             self.critic_optimizer.step()
 
             """ Policy Training """
-            bc_loss = self.model.policy_loss(x=sampled_act_chunk, cond={"state": norm_obs_policy})
-            bc_loss = torch.mean(bc_loss)
+            bc_loss_1 = self.model.policy_loss(x=sampled_act_chunk, cond={"state": norm_obs_policy})
+            bc_loss_1 = 0.0 * torch.mean(bc_loss_1)
+
+            norm_obs_policy_demo = self.obs_policy_rms(sampled_obs_policy_demo)
+            bc_loss_2 = self.model.policy_loss(x=sampled_act_chunk_demo, cond={"state": norm_obs_policy_demo})
+            bc_loss_2 = 10.0 * torch.mean(bc_loss_2)
+
+            bc_loss = bc_loss_1 + bc_loss_2
 
             new_act_chunk = self.model.forward_train(cond={"state": norm_obs_policy}, deterministic=False)
             q1_new_action, q2_new_action = self.model.critic(norm_obs_critic, new_act_chunk)

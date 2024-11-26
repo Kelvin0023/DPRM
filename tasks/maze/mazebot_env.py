@@ -142,7 +142,7 @@ class MazeBotEnv(DirectRLEnv):
         )
 
         if self.reset_dist_type == "eval":
-            self.success = torch.logical_or(self.success > 0, (dist < 0.2))
+            self.success = torch.logical_or(self.success > 0, (dist < self.cfg.at_goal_threshold))
             self.extras["success"] = self.success
 
         return total_reward
@@ -205,8 +205,13 @@ class MazeBotEnv(DirectRLEnv):
         except:
             pass
 
-        # reset the state of the environment
-        states = torch.zeros((len(env_ids), 4), device=self.device)
+        # create the new state for the environment
+        if self.reset_dist_type == "train":
+            # sample random state from the reset distribution
+            sampled_idx = torch.randint(0, self.reset_state_buf.shape[0], (len(env_ids),))
+            states = self.reset_state_buf[sampled_idx].to(self.device)
+        else:
+            states = torch.zeros((len(env_ids), 4), device=self.device)
         self.set_env_states(states, env_ids)
 
         # Need to refresh the intermediate values so that _get_observations() can use the latest values
@@ -488,10 +493,19 @@ def compute_rewards(
 ):
     # distance to goal
     dist = torch.linalg.norm(joint_pos - goal, dim=1)
-    # reward
-    reward = (dist < at_goal_threshold) * success_reward_scale
+    # dense reward
+    dense_reward = -(dist**2) * dense_reward_scale
+    # success (sparse) reward
+    success_reward = (dist < at_goal_threshold) * success_reward_scale
+
     if reward_type == "dense":
-        reward += -(dist**2) * dense_reward_scale
+        reward = dense_reward
+    elif reward_type == "sparse":
+        reward = success_reward
+    elif reward_type == "mixed":
+        reward = dense_reward + success_reward
+    else:
+        raise ValueError(f"Invalid reward type: {reward_type}")
 
     return reward, dist
 

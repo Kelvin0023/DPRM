@@ -1010,6 +1010,7 @@ class PRM:
                 obs_critic_buf = torch.cat((obs_critic_buf, extracted_obs_critic), dim=0)
                 act_buf = torch.cat((act_buf, extracted_act), dim=0)
 
+        print("***Buffer sizes in the demos: ", obs_policy_buf.size(0), "***")
         return obs_policy_buf, obs_critic_buf, act_buf
 
     def extract_one_demo(self, max_len, num_parents):

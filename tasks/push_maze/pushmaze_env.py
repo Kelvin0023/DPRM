@@ -14,6 +14,7 @@ try:
 except ImportError:
     pass
 
+from tasks.push_t.pusht_env import compute_quat_angle, gen_rot_around_z
 from tasks.push_maze.pushmaze_env_cfg import PushMazeEnvCfg
 from tasks.push_maze.gen_maze_states import MazeA, MazeB, MazeC, generate
 from utils.misc import AverageScalarMeter, to_torch
@@ -64,14 +65,14 @@ class PushMazeEnv(DirectRLEnv):
         self.reset_dist_type = "eval"
 
         # set up reset distribution (only used in on-policy learning)
-        self.reset_state_buf = to_torch(generate(self.maze_object, nsample=5000, pad=0.05), device=self.device)
+        self.reset_state_buf = None
 
         # planning state (x) dimension
-        self.planning_state_dim = 6  # 2 for robot position, 2 for robot velocity and 2 for object position
+        self.planning_state_dim = 15  # 2 for robot position, 2 for robot velocity, 2 for object position, 4 for object orientation and 6 for object linear and angular velocity
         self.planner_goal_dim = 2  # 2 for goal position
 
         # set up goal buffer from the reset distribution
-        self.goal_buf = self.reset_state_buf.clone()[:, :2]
+        self.goal_buf = to_torch(generate(self.maze_object, nsample=5000, pad=0.05), device=self.device)[:, :2]
 
         # set up object valid position buffer
         # Note that the pad is larger than that in goa buffer since we don't want the object to be stuck in the corner
@@ -122,6 +123,9 @@ class PushMazeEnv(DirectRLEnv):
                 self.robot.data.joint_pos.view(self.num_envs, -1),  # robot position (2)
                 self.robot.data.joint_vel.view(self.num_envs, -1),  # robot velocity (2)
                 self.object_pos_xy,  # object x and y coordinate (2)
+                self.object_rotation,  # object rotation (4)
+                self.object_lin_vel_xy,  # object x and y velocity (2)
+                self.object_ang_vel,  # object angular velocity (3)
                 self.goal  # goal x and y coordinate (2)
             ),
             dim=-1,
@@ -153,7 +157,7 @@ class PushMazeEnv(DirectRLEnv):
         )
         # Update success rate
         if self.reset_dist_type == "eval":
-            self.success = torch.logical_or(self.success > 0, (dist < 0.2))
+            self.success = torch.logical_or(self.success > 0, (dist < self.cfg.at_goal_threshold))
             self.extras["success"] = self.success
 
         return total_reward
@@ -169,11 +173,8 @@ class PushMazeEnv(DirectRLEnv):
         self._compute_intermediate_values()
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-
+        # No explicit termination condition
         done = torch.zeros_like(self.reset_buf, dtype=torch.bool)
-        # # Compute distance between object and robot
-        # obj_robot_dist = torch.linalg.norm(self.object_pos_xy - self.joint_pos, dim=1)
-        # done = obj_robot_dist > self.cfg.robot_object_thres
 
         return done, time_out
 
@@ -205,21 +206,30 @@ class PushMazeEnv(DirectRLEnv):
         except:
             pass
 
-        # reset the state of the environment
-        # reset the robot to the start point with zero velocity
-        robot_state = torch.zeros((len(env_ids), 4), device=self.device)
-        # sample random position for object
-        # object_coord = self.obj_pos_buf[torch.randint_like(env_ids, len(self.obj_pos_buf))]
-        object_coord = torch.tensor([0, 0.1], device=self.device).repeat(len(env_ids), 1)
+        # create the new state for the environment
+        if self.reset_dist_type == "train":
+            # sample random state from the reset distribution
+            sampled_idx = torch.randint(0, self.reset_state_buf.shape[0], (len(env_ids),))
+            states = self.reset_state_buf[sampled_idx].to(self.device)
+        else:
+            robot_state = torch.zeros((len(env_ids), 4), device=self.device)
+            # sample random position for object
+            object_pos_xy = torch.tensor([0, 0.1], device=self.device).repeat(len(env_ids), 1)
+            obj_rot = torch.tensor([1, 0, 0, 0], device=self.device).repeat(len(env_ids), 1)
+            object_lin_vel_xy = torch.zeros((len(env_ids), 2), device=self.device)
+            obj_ang_vel = torch.zeros((len(env_ids), 3), device=self.device)
 
-        # Set the states to the environment
-        states = torch.cat(
-            [
-                robot_state,
-                object_coord,
-            ],
-            dim=1
-        )
+            # Set the states to the environment
+            states = torch.cat(
+                [
+                    robot_state,
+                    object_pos_xy,
+                    obj_rot,
+                    object_lin_vel_xy,
+                    obj_ang_vel,
+                ],
+                dim=1
+            )
         self.set_env_states(states, env_ids)
 
         # Need to refresh the intermediate values so that _get_observations() can use the latest values
@@ -298,6 +308,11 @@ class PushMazeEnv(DirectRLEnv):
 
         # compute the object x and y coordinate
         self.object_pos_xy = (self.object.data.root_pos_w - self.scene.env_origins)[:, 0:2]
+        self.object_height = (self.object.data.root_pos_w - self.scene.env_origins)[:, 2]
+        self.object_rotation = self.object.data.root_quat_w
+        # compute the object linear and angular velocity
+        self.object_lin_vel_xy = self.object.data.root_lin_vel_w[:, 0:2]
+        self.object_ang_vel = self.object.data.root_ang_vel_w
 
     def compute_intermediate_values(self) -> None:
         """ A public function to update intermediate values of the environment. """
@@ -396,19 +411,6 @@ class PushMazeEnv(DirectRLEnv):
     """ PRM Planner functions """
 
 
-    def sample_q(self, num_samples) -> torch.Tensor:
-        """ Sampling space now contains both position and velocity"""
-        # Sample random positions
-        u = torch.rand((num_samples, 2), device=self.device)
-        w_max = to_torch([self.dof_pos_upper_lim[0], self.dof_pos_upper_lim[1]])
-        w_min = to_torch([self.dof_pos_lower_lim[0], self.dof_pos_lower_lim[1]])
-        q = (w_max - w_min) * u + w_min
-        # Sample random velocities in the range [-0.25, 0.25]
-        u_dot = torch.rand((num_samples, 2), device=self.device)
-        q_dot = 2.0 * u_dot - 1.0
-        samples = torch.cat([q, q_dot], dim=1)
-        return samples
-
     def get_env_q(self) -> torch.Tensor:
         """ Returns the current q_state of the environment """
         return self.get_env_states()
@@ -419,9 +421,12 @@ class PushMazeEnv(DirectRLEnv):
 
         return torch.cat(
             [
-                self.joint_pos.detach().clone(),
-                self.joint_vel.detach().clone(),
-                self.object_pos_xy.detach().clone(),
+                self.joint_pos.detach().clone(),  # (2)
+                self.joint_vel.detach().clone(),  # (2)
+                self.object_pos_xy.detach().clone(),  # (2)
+                self.object_rotation.detach().clone(),  # (4)
+                self.object_lin_vel_xy.detach().clone(),  # (2)
+                self.object_ang_vel.detach().clone(),  # (3)
             ],
             dim=1
         )
@@ -431,26 +436,32 @@ class PushMazeEnv(DirectRLEnv):
         # Extract joint position and velocity from the states
         joint_pos = states[:, :2]
         joint_vel = states[:, 2:4]
-        object_coord = states[:, 4:6]
+        object_pos_xy = states[:, 4:6]
+        object_rot = states[:, 6:10]
+        object_lin_vel_xy = states[:, 10:12]
+        object_ang_vel = states[:, 12:15]
 
         # Write the joint state to the simulation
         self.joint_pos_target = joint_pos
         self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
-        # Write object position
-        object_default_state = self.object.data.default_root_state.clone()[env_ids]
-        object_default_state[:, :2] = object_coord
+        # Write object position and velocity to the simulation
+        object_state = self.object.data.default_root_state.clone()[env_ids]
+        object_state[:, :2] = object_pos_xy
+        object_state[:, 3:7] = object_rot
+        object_state[:, 7:9] = object_lin_vel_xy
+        object_state[:, 10:13] = object_ang_vel
         # Add the origin of each environment
-        object_default_state[:, :3] += self.scene.env_origins[env_ids]
+        object_state[:, :3] += self.scene.env_origins[env_ids]
 
-        self.object.write_root_state_to_sim(object_default_state, env_ids)
+        self.object.write_root_state_to_sim(object_state, env_ids)
 
     def set_goal(self, goals: torch.Tensor, env_ids: torch.Tensor) -> None:
         self.goal[env_ids, :] = goals
 
     def q_to_goal(self, q: torch.Tensor) -> torch.Tensor:
         """ Extract goal position from q_state """
-        goal = q[:, -2:]  # extract object x and y position
+        goal = q[:, 4:6]  # extract object x and y position
         return goal
 
     def compute_goal_distance(self, prm_nodes: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
@@ -470,33 +481,74 @@ class PushMazeEnv(DirectRLEnv):
         robot_vel_dist = 0.05 * torch.linalg.norm(prm_nodes[:, 2:4] - selected_node[2:4], dim=1)
         # Object Position distance
         object_pos_dist = 1.0 * torch.linalg.norm(prm_nodes[:, 4:6] - selected_node[4:6], dim=1)
+        # Object rotation distance
+        object_rot_dist = 0.2 * compute_quat_angle(selected_node[6:10], prm_nodes[:, 6:10]).squeeze()
+        # Object linear velocity distance
+        object_lin_vel_xy_dist = 0.01 * torch.linalg.norm(prm_nodes[:, 10:12] - selected_node[10:12], dim=1)
+        # Object angular velocity distance
+        object_ang_vel_dist = 0.01 * torch.linalg.norm(prm_nodes[:, 12:15] - selected_node[12:15], dim=1)
         # Compute the total distance
-        total_dist = robot_pos_dist + robot_vel_dist + object_pos_dist
+        total_dist = robot_pos_dist + robot_vel_dist + object_pos_dist + object_rot_dist + object_lin_vel_xy_dist + object_ang_vel_dist
         return total_dist
 
-    def sample_random_nodes(self, N: int = 32) -> torch.Tensor:
+    def sample_q(self, num_samples: int = 32) -> torch.Tensor:
         """ Uniformly sample initial collision-free nodes to be added to the graph """
-        # Sample valid robot positions in maze
-        object_init_states = generate(self.maze_object, nsample=N, pad=0.1)
-        q_object = to_torch(object_init_states, device=self.device)[:, :2]
-        # Sample valid object positions by adding random offset to the robot position
-        q_robot = q_object + torch_rand_float(
-            -0.1,
-            0.1,
-            (N, 2),
-            device=self.device,
-        )
+        # Sample valid object positions in maze
+        object_init_pos = generate(self.maze_object, nsample=num_samples, pad=0.1)
+        obj_pos_xy = to_torch(object_init_pos, device=self.device)[:, :2]
+        # Sample random robot position in maze
+        robot_init_pos = generate(self.maze_object, nsample=num_samples, pad=0.05)
+        robot_pos = to_torch(robot_init_pos, device=self.device)[:, :2]
         # Sample random robot velocity within velocity limits
         alpha = torch_rand_float(
             0.0,
             1.0,
-            (N, self.dof_vel_lower_lim.shape[0]),
+            (num_samples, self.dof_vel_lower_lim.shape[0]),
             device=self.device,
         )
-        q_dot_robot = alpha * self.dof_vel_upper_lim + (1 - alpha) * self.dof_vel_lower_lim
-        # Concatenate position and velocity
-        x_start = torch.cat([q_robot, q_dot_robot, q_object], dim=1)
+        robot_vel = alpha * self.dof_vel_upper_lim + (1 - alpha) * self.dof_vel_lower_lim
+        # Sample random object orientation
+        obj_rot = gen_rot_around_z(num_samples, device=self.device)
+        # Sample random object linear velocity within velocity limits
+        obj_lin_vel_xy = torch.zeros((num_samples, 2), device=self.device)
+        obj_ang_vel = torch.zeros((num_samples, 3), device=self.device)
+        x_start = torch.cat(
+            [
+                robot_pos,
+                robot_vel,
+                obj_pos_xy,
+                obj_rot,
+                obj_lin_vel_xy,
+                obj_ang_vel,
+            ],
+            dim=1
+        )
         return x_start
+
+    def sample_random_nodes(self, N: int = 32) -> torch.Tensor:
+        """ Uniformly sample initial collision-free nodes to be added to the graph """
+        sampled_nodes = []
+
+        while len(sampled_nodes) < N:
+            # sample random states unifromly
+            x_samples = self.sample_q(num_samples=self.num_envs)
+            # apply the sampled states to the environment
+            with torch.inference_mode():
+                self.set_env_states(x_samples, torch.tensor(list(range(self.num_envs)), device=self.device))
+                self.simulate()
+            self._compute_intermediate_values()
+
+            # perform validity check
+            invalid, x_start_prime = self.is_invalid()
+
+            # add valid states to the list
+            valid_indices = torch.nonzero(torch.logical_not(invalid), as_tuple=False).squeeze(-1)
+            for idx in valid_indices:
+                if len(sampled_nodes) >= N:
+                    break
+                sampled_nodes.append(x_start_prime[idx].clone())
+
+        return torch.stack(sampled_nodes).to(self.device)
 
     def sample_random_goal_state(self, num_goal) -> torch.Tensor:
         """ Sample goal positions which is close to the nodes in the node set """
@@ -509,6 +561,12 @@ class PushMazeEnv(DirectRLEnv):
         invalid = torch.logical_or(
             torch.any(self.joint_vel < self.dof_vel_lower_lim, dim=1),
             torch.any(self.joint_vel > self.dof_vel_upper_lim, dim=1),
+        )
+        # object height constraints
+        invalid = torch.where(
+            self.object_height > self.cfg.height_limit,
+            torch.ones_like(self.reset_buf),
+            invalid,
         )
         # robot-object distance constraints
         obj_robot_dist = torch.linalg.norm(self.object_pos_xy - self.joint_pos, dim=1)
@@ -538,10 +596,19 @@ def compute_rewards(
 ):
     # distance between object position and goal position
     dist = torch.linalg.norm(object_pos_xy - goal, dim=1)
-    # reward
-    reward = (dist < at_goal_threshold) * success_reward_scale
+    # dense reward
+    dense_reward = -(dist**2) * dense_reward_scale
+    # success (sparse) reward
+    success_reward = (dist < at_goal_threshold) * success_reward_scale
+
     if reward_type == "dense":
-        reward += -(dist**2) * dense_reward_scale
+        reward = dense_reward
+    elif reward_type == "sparse":
+        reward = success_reward
+    elif reward_type == "mixed":
+        reward = dense_reward + success_reward
+    else:
+        raise ValueError(f"Invalid reward type: {reward_type}")
 
     return reward, dist
 

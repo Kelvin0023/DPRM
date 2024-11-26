@@ -73,13 +73,10 @@ def build_prm_mazebot(cfg: DictConfig):
     planner = hydra.utils.get_class(planner_cfg["_target_"])(
         cfg=planner_cfg,
         env=env,
-        model=None,
-        critic=None,
+        model_target=None,
         obs_policy_rms=None,
         obs_critic_rms=None,
-        state_rms=None,
         value_rms=None,
-        separate_planning_model=False,
         device=maze_cfg["rl_device"],
     )
 
@@ -112,19 +109,21 @@ def build_prm_mazebot(cfg: DictConfig):
     plt.show()
 
     # Perform random walk
-    walk, obs_buf, act_buf = planner.extract_walks(num_walks=5, length=10)
-    print("***** Extract Random Walks on PRM *****")
-    for i in range(walk.shape[0]):
-        for j in range(walk.shape[1] - 1):
-            if walk[i, j + 1, 0] == float('-inf'):
-                break
-            planner._visualize_new_edges(
-                walk[i, j, :].unsqueeze(0),
-                walk[i, j + 1, :].unsqueeze(0),
-                edge_color=[0, 0, 0, 1],
-                node_color=[1, 0, 0, 1]
-            )
-    print("***** End of Random Walks *****")
+    # walk, obs_buf, act_buf = planner.extract_walks(num_walks=5, length=10)
+    # print("***** Extract Random Walks on PRM *****")
+    # for i in range(walk.shape[0]):
+    #     for j in range(walk.shape[1] - 1):
+    #         if walk[i, j + 1, 0] == float('-inf'):
+    #             break
+    #         planner._visualize_new_edges(
+    #             walk[i, j, :].unsqueeze(0),
+    #             walk[i, j + 1, :].unsqueeze(0),
+    #             edge_color=[0, 0, 0, 1],
+    #             node_color=[1, 0, 0, 1]
+    #         )
+    # print("***** End of Random Walks *****")
+
+    planner.extract_demos(num_demos=2, max_len=20, num_parents=3)
 
     # simulate environment with zero actions
     while simulation_app.is_running():

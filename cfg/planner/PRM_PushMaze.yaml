@@ -2,7 +2,7 @@ _target_: algo.prm.PRM
 
 rollout_len: 4
 samples_per_epoch: 1024
-new_state_portion: 0.1
+new_state_portion: 0.5
 node_merge_threshold: 0.2
 max_num_nodes: 500000
 max_children: 100

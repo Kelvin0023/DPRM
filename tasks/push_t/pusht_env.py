@@ -161,7 +161,14 @@ class PushTEnv(DirectRLEnv):
         success = self.check_success()
         reward_success = success.float() * self.cfg.success_reward_scale
 
-        total_reward = reward_pos + reward_rot + reward_success
+        if self.cfg.reward_type == "sparse":
+            total_reward = reward_success
+        elif self.cfg.reward_type == "dense":
+            total_reward = reward_pos + reward_rot
+        elif self.cfg.reward_type == "mixed":
+            total_reward = reward_pos + reward_rot + reward_success
+        else:
+            raise ValueError(f"Invalid reward type: {self.cfg.reward_type}")
 
         # Update success rate
         if self.reset_dist_type == "eval":
@@ -346,6 +353,7 @@ class PushTEnv(DirectRLEnv):
 
         # compute the object position and orientation
         self.object_pos_xy = (self.object.data.root_pos_w - self.scene.env_origins)[:, 0:2]
+        self.object_height = (self.object.data.root_pos_w - self.scene.env_origins)[:, 2]
         self.object_rotation = self.object.data.root_quat_w
         # compute object linear and angular velocity
         self.object_lin_vel_xy = self.object.data.root_lin_vel_w[:, 0:2]
@@ -546,21 +554,21 @@ class PushTEnv(DirectRLEnv):
         total_dist = robot_pos_dist + robot_vel_dist + object_pos_xy_dist + object_rot_dist + object_lin_vel_xy_dist + object_ang_vel_dist
         return total_dist
 
-    def sample_random_nodes(self, N: int = 32) -> torch.Tensor:
+    def sample_q(self, num_samples: int = 32) -> torch.Tensor:
         """ Uniformly sample initial collision-free nodes to be added to the graph """
         # Sample random robot position in maze
-        robot_pos = torch_rand_float(0.0, 1.0, (N, 2), device=self.device)
+        robot_pos = torch_rand_float(0.0, 1.0, (num_samples, 2), device=self.device)
         robot_pos = robot_pos * (self.dof_pos_upper_lim - self.dof_pos_lower_lim) + self.dof_pos_lower_lim
         # Sample random robot velocity within velocity limits
         robot_vel = torch.zeros_like(robot_pos)
         # sample random position for object
-        obj_pos_xy = torch_rand_float(0.0, 1.0, (N, 2), device=self.device)
+        obj_pos_xy = torch_rand_float(0.0, 1.0, (num_samples, 2), device=self.device)
         obj_pos_xy = obj_pos_xy * (self.obj_pos_upper_lim - self.obj_pos_lower_lim) + self.obj_pos_lower_lim
         # Sample random object orientation
-        obj_rot = gen_rot_around_z(N, device=self.device)
+        obj_rot = gen_rot_around_z(num_samples, device=self.device)
         # Sample random object linear velocity within velocity limits
-        obj_lin_vel_xy = torch.zeros((N, 2), device=self.device)
-        obj_ang_vel = torch.zeros((N, 3), device=self.device)
+        obj_lin_vel_xy = torch.zeros((num_samples, 2), device=self.device)
+        obj_ang_vel = torch.zeros((num_samples, 3), device=self.device)
         x_start = torch.cat(
             [
                 robot_pos,
@@ -574,6 +582,31 @@ class PushTEnv(DirectRLEnv):
         )
         return x_start
 
+    def sample_random_nodes(self, N: int = 32) -> torch.Tensor:
+        """ Uniformly sample initial collision-free nodes to be added to the graph """
+        sampled_nodes = []
+
+        while len(sampled_nodes) < N:
+            # sample random states unifromly
+            x_samples = self.sample_q(num_samples=self.num_envs)
+            # apply the sampled states to the environment
+            with torch.inference_mode():
+                self.set_env_states(x_samples, torch.tensor(list(range(self.num_envs)), device=self.device))
+                self.simulate()
+            self._compute_intermediate_values()
+
+            # perform validity check
+            invalid, x_start_prime = self.is_invalid()
+
+            # add valid states to the list
+            valid_indices = torch.nonzero(torch.logical_not(invalid), as_tuple=False).squeeze(-1)
+            for idx in valid_indices:
+                if len(sampled_nodes) >= N:
+                    break
+                sampled_nodes.append(x_start_prime[idx].clone())
+
+        return torch.stack(sampled_nodes).to(self.device)
+
     def sample_random_goal_state(self, num_goal) -> torch.Tensor:
         """ Sample goal positions which is close to the nodes in the node set """
         return self.sample_random_nodes(num_goal)
@@ -586,18 +619,31 @@ class PushTEnv(DirectRLEnv):
             torch.any(self.joint_vel < self.dof_vel_lower_lim, dim=1),
             torch.any(self.joint_vel > self.dof_vel_upper_lim, dim=1),
         )
-        # object position constraints
-        invalid_obj_pos = torch.logical_or(
+        # object xy position constraints
+        invalid_obj_pos_xy = torch.logical_or(
             torch.any(self.object_pos_xy < self.obj_pos_lower_lim, dim=1),
             torch.any(self.object_pos_xy > self.obj_pos_upper_lim, dim=1),
         )
-        invalid = torch.logical_or(invalid, invalid_obj_pos)
+        invalid = torch.logical_or(invalid, invalid_obj_pos_xy)
+        # object height constraints
+        invalid = torch.where(
+            self.object_height > self.cfg.height_limit,
+            torch.ones_like(self.reset_buf),
+            invalid,
+        )
         # object linear velocity constraints
         invalid_obj_lin_vel = torch.logical_or(
             torch.any(self.object_lin_vel_xy < self.obj_vel_lower_lim, dim=1),
             torch.any(self.object_lin_vel_xy > self.obj_vel_upper_lim, dim=1),
         )
         invalid = torch.logical_or(invalid, invalid_obj_lin_vel)
+        # robot-object dist constraints
+        robot_obj_dist = torch.linalg.norm(self.object_pos_xy - self.joint_pos, dim=1)
+        invalid = torch.where(
+            robot_obj_dist > self.cfg.valid_robot_object_thres,
+            torch.ones_like(self.reset_buf),
+            invalid,
+        )
 
         x_start_prime = self.get_env_states()
         return invalid, x_start_prime

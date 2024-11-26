@@ -128,7 +128,8 @@ class PushTEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=6.0, replicate_physics=True)
 
     # PRM valid state limits
-    valid_robot_object_thres = 0.3
+    valid_robot_object_thres = 1.0
+    height_limit = 0.1505
     dof_pos_lower_limit = [-1.2, -1.2]
     dof_pos_upper_limit = [1.2, 1.2]
     dof_vel_lower_limit = [-1.0, -1.0]
@@ -143,7 +144,7 @@ class PushTEnvCfg(DirectRLEnvCfg):
     kd = 2
 
     # reward and termination
-    reward_type = "dense"  # dense or sparse
+    reward_type = "sparse"  # sparse, dense, or mixed
     pos_dense_reward_scale = 1.0
     rot_dense_reward_scale = 1.0
     success_reward_scale = 10.0  # sparse reward for pushing object to the goal position
