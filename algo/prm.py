@@ -715,7 +715,8 @@ class PRM:
             act_buf: torch.Tensor,
             goal_buf: torch.Tensor | None,
             state_buf: torch.Tensor,
-            search_for_planner: bool = False
+            search_for_planner: bool = False,
+            update_goal: bool = True
     ) -> (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None):
         # Fetch the indices of the goal
         if search_for_planner:
@@ -748,12 +749,17 @@ class PRM:
                 valid_state = state_buf[search, :last_valid_idx[search] + 1, :]
                 if search_for_planner:
                     # Add goal to the goal buffer
-                    new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), 1).cpu()
-                    # new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end]
+                    if update_goal:
+                        new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end].repeat(valid_obs_policy.size(0), 1).cpu()
+                    else:
+                        new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), 1).cpu()
                     updated_goal_buf = torch.cat((updated_goal_buf, new_goal), dim=0)
                 elif hasattr(self.env, "goal"):
                     # Add goal to the goal buffer
-                    new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), 1).cpu()
+                    if update_goal:
+                        new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end].repeat(valid_obs_policy.size(0), 1).cpu()
+                    else:
+                        new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), 1).cpu()
                     updated_goal_buf = torch.cat((updated_goal_buf, new_goal), dim=0)
                     # Update the goal in the valid observations
                     valid_obs_policy[:, policy_goal_start: policy_goal_end] = new_goal
