@@ -46,7 +46,11 @@ class BCReplayBuffer:
         Returns:
             A tuple of batches (states, actions, rewards, next_states, dones), each of which is a tensor.
         """
-        batch = random.sample(self.memory, self.batch_size)
+        # if the buffer is not full, we can sample repeatedly from the buffer
+        if len(self.memory) < self.batch_size:
+            batch = random.choices(self.memory, k=self.batch_size)
+        else:
+            batch = random.sample(self.memory, self.batch_size)
 
         # Unpacking the experience tuples
         obs_policy, action = zip(*batch)
@@ -110,7 +114,11 @@ class ReplayBuffer:
         Returns:
             A tuple of batches (states, actions, rewards, next_states, dones), each of which is a tensor.
         """
-        batch = random.sample(self.memory, self.batch_size)
+        # if the buffer is not full, we can sample repeatedly from the buffer
+        if len(self.memory) < self.batch_size:
+            batch = random.choices(self.memory, k=self.batch_size)
+        else:
+            batch = random.sample(self.memory, self.batch_size)
 
         # Unpacking the experience tuples
         obs_policy, obs_critic, action, reward_sum, env_not_done, obs_policy_prime, obs_critic_prime = zip(*batch)
