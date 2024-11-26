@@ -1021,8 +1021,12 @@ class PRM:
         act_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
 
         # Sample a random node in PRM that serves as goal
-        goal_node_idx = torch.randint(0, self.prm_q.size(0), (1,)).item()
-        node_parent_idx_list = self.prm_parents[goal_node_idx]
+        # Start with a node that has at least one parent
+        while True:
+            goal_node_idx = torch.randint(0, self.prm_q.size(0), (1,)).item()
+            node_parent_idx_list = self.prm_parents[goal_node_idx]
+            if len(node_parent_idx_list) > 0:
+                break
 
         # visualize the goal node
         if self.visualize_prm:
