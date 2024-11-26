@@ -716,7 +716,7 @@ class PRM:
             goal_buf: torch.Tensor | None,
             state_buf: torch.Tensor,
             search_for_planner: bool = False,
-            update_goal: bool = True
+            update_goal: bool = False
     ) -> (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None):
         # Fetch the indices of the goal
         if search_for_planner:
@@ -1125,28 +1125,6 @@ class PRM:
 
         return obs_policy_buf, obs_critic_buf, act_buf
 
-    # def select_best_parents(self, node_idx, parent_idx_list, dist_thres, num_parents):
-    #     # Compute goal_dist between the node and its parents
-    #     goal_dist = self.env.compute_goal_distance(prm_nodes=self.prm_q[parent_idx_list], goal=self.prm_q[node_idx])
-    #     # Return None if the dist_thres is not satisfied
-    #     if goal_dist.max() < dist_thres:
-    #         return None
-    #     # Reduce the number of parents to extract if we do not have enough parents
-    #     if len(goal_dist) < num_parents:
-    #         num_parents = len(goal_dist)
-    #     # Select (num_parents) nodes with the highest goal_dist
-    #     top_parents_dist, selected_parents_list_idx = torch.topk(goal_dist, num_parents)
-    #     # Remove the nodes if the dist_thres is not satisfied
-    #     selected_parents_list_idx = selected_parents_list_idx[goal_dist[selected_parents_list_idx] > dist_thres]
-    #     print("Debug: top_parents_dist: ", top_parents_dist)
-    #     print("Debug: selected_parents_list_idx: ", selected_parents_list_idx)
-    #     print("Debug: goal_dist[selected_parents_list_idx] > dist_thres:", goal_dist[selected_parents_list_idx] > dist_thres)
-    #     print("Debug: goal_dist[selected_parents_list_idx]: ", goal_dist[selected_parents_list_idx])
-    #     top_parents_dist = top_parents_dist[goal_dist[selected_parents_list_idx] >= dist_thres]
-    #     # Extract the index of parent nodes in the graph
-    #     parents_idx = [parent_idx_list[i] for i in selected_parents_list_idx.tolist()]
-    #     return parents_idx, top_parents_dist
-
     def select_best_parents(self, node_idx, parent_idx_list, dist_thres, num_parents):
         # Compute goal_dist between the node and its parents
         goal_dist = self.env.compute_goal_distance(prm_nodes=self.prm_q[parent_idx_list], goal=self.prm_q[node_idx])
@@ -1180,8 +1158,6 @@ class PRM:
         for i in range(len(parent_node_idx_list)):
             # find the index of node_idx in the child list of the parent
             child_list = self.prm_children[parent_node_idx_list[i]]
-            # print("Debug: child_list: ", child_list)
-            # print("Debug: node_idx: ", child_node_idx)
             child_idx = torch.nonzero(child_list == child_node_idx, as_tuple=False)[0].item()
             # Extract the obs and action chunks
             obs_policy_buf = torch.cat(
