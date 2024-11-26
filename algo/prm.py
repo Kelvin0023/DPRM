@@ -1000,18 +1000,20 @@ class PRM:
         obs_policy_buf = torch.empty((0, self.env.cfg.num_observations))
         obs_critic_buf = torch.empty((0, self.env.cfg.num_states))
         act_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
+        goal_buf = torch.empty((0, self.env.planner_goal_dim))
 
         for i in range(num_demos):
             results = self.extract_one_demo(max_len, num_parents)
 
             if results is not None:
-                extracted_obs_policy, extracted_obs_critic, extracted_act = results
+                extracted_obs_policy, extracted_obs_critic, extracted_act, extracted_goal = results
                 obs_policy_buf = torch.cat((obs_policy_buf, extracted_obs_policy), dim=0)
                 obs_critic_buf = torch.cat((obs_critic_buf, extracted_obs_critic), dim=0)
                 act_buf = torch.cat((act_buf, extracted_act), dim=0)
+                goal_buf = torch.cat((goal_buf, extracted_goal), dim=0)
 
         print("***Buffer sizes in the demos: ", obs_policy_buf.size(0), "***")
-        return obs_policy_buf, obs_critic_buf, act_buf
+        return obs_policy_buf, obs_critic_buf, act_buf, goal_buf
 
     def extract_one_demo(self, max_len, num_parents):
         obs_policy_buf = torch.empty((0, self.env.cfg.num_observations))
@@ -1124,7 +1126,10 @@ class PRM:
         obs_policy_buf[:, policy_goal_start:policy_goal_end] = new_goal
         obs_critic_buf[:, critic_goal_start:critic_goal_end] = new_goal
 
-        return obs_policy_buf, obs_critic_buf, act_buf
+        # Create goal buffer
+        goal_buf = new_goal.repeat(obs_policy_buf.size(0), 1)
+
+        return obs_policy_buf, obs_critic_buf, act_buf, goal_buf
 
     def select_best_parents(self, node_idx, parent_idx_list, dist_thres, num_parents):
         # Compute goal_dist between the node and its parents

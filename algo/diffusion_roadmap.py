@@ -346,7 +346,7 @@ class DiffusionRoadmap:
                     mean_success_rate = running_mean_success / running_mean_term
                     wandb.log({"eval_success_rate/step": mean_success_rate}, step=self.agent_steps)
 
-            obs_policy_demo, obs_critic_demo, act_demo = self.planner.extract_demos(num_demos=50, max_len=50, num_parents=3)
+            obs_policy_demo, obs_critic_demo, act_demo, _ = self.planner.extract_demos(num_demos=50, max_len=50, num_parents=3)
             self.bc_replay_buffer.store(obs_policy_demo, act_demo)
 
             self.epoch_num += 1
@@ -438,7 +438,7 @@ class DiffusionRoadmap:
             obs_critic_prime_buf
         )
 
-        # obs_policy_demo, obs_critic_demo, act_demo = self.planner.extract_demos(num_demos=50, max_len=20, num_parents=3)
+        # obs_policy_demo, obs_critic_demo, act_demo, _ = self.planner.extract_demos(num_demos=50, max_len=20, num_parents=3)
         # self.bc_replay_buffer.store(obs_policy_demo, act_demo)
 
         self.data_collect_time += time.time() - _t
