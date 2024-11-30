@@ -78,7 +78,7 @@ class PushMazeEnv(DirectRLEnv):
         # Note that the pad is larger than that in goal buffer since we don't want the object to be stuck in the corner
         # And the robot stays close enough to the object
         self.robot_obj_pos_buf = to_torch(
-            generate_robot_obj_pos(self.maze_object, nsample=1000, pad=0.1, min_dist=0.05, max_dist=0.1),
+            generate_robot_obj_pos(self.maze_object, nsample=5000, pad=0.1, min_dist=0.05, max_dist=0.1),
             device=self.device
         )
 
