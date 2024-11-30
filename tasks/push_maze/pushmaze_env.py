@@ -16,7 +16,7 @@ except ImportError:
 
 from tasks.push_t.pusht_env import compute_quat_angle, gen_rot_around_z
 from tasks.push_maze.pushmaze_env_cfg import PushMazeEnvCfg
-from tasks.push_maze.gen_maze_states import MazeA, MazeB, MazeC, generate
+from tasks.push_maze.gen_maze_states import MazeA, MazeB, MazeC, generate, generate_robot_obj_pos
 from utils.misc import AverageScalarMeter, to_torch
 
 
@@ -74,9 +74,13 @@ class PushMazeEnv(DirectRLEnv):
         # set up goal buffer from the reset distribution
         self.goal_buf = to_torch(generate(self.maze_object, nsample=5000, pad=0.05), device=self.device)[:, :2]
 
-        # set up object valid position buffer
-        # Note that the pad is larger than that in goa buffer since we don't want the object to be stuck in the corner
-        self.obj_pos_buf = to_torch(generate(self.maze_object, nsample=5000, pad=0.1), device=self.device)
+        # set up valid position buffer for object and robot
+        # Note that the pad is larger than that in goal buffer since we don't want the object to be stuck in the corner
+        # And the robot stays close enough to the object
+        self.robot_obj_pos_buf = to_torch(
+            generate_robot_obj_pos(self.maze_object, nsample=1000, pad=0.1, min_dist=0.05, max_dist=0.1),
+            device=self.device
+        )
 
         # Logging success rate
         self.success = torch.zeros_like(self.reset_buf, dtype=torch.float)
@@ -494,11 +498,9 @@ class PushMazeEnv(DirectRLEnv):
     def sample_q(self, num_samples: int = 32) -> torch.Tensor:
         """ Uniformly sample initial collision-free nodes to be added to the graph """
         # Sample valid object positions in maze
-        object_init_pos = generate(self.maze_object, nsample=num_samples, pad=0.1)
-        obj_pos_xy = to_torch(object_init_pos, device=self.device)[:, :2]
-        # Sample random robot position in maze
-        robot_init_pos = generate(self.maze_object, nsample=num_samples, pad=0.05)
-        robot_pos = to_torch(robot_init_pos, device=self.device)[:, :2]
+        rand_idx = torch.randint(0, self.robot_obj_pos_buf.shape[0], (num_samples,))
+        obj_pos_xy = self.robot_obj_pos_buf[rand_idx, :2]
+        robot_pos = self.robot_obj_pos_buf[rand_idx, 2:4]
         # Sample random robot velocity within velocity limits
         alpha = torch_rand_float(
             0.0,

@@ -98,25 +98,25 @@ def generate(maze, nsample=100, pad=0.05):
 
     return states
 
-def generate_robot_obj_pos(maze, nsample=100, pad=0.05, min_dist=0.1, max_dist=0.5):
+def generate_robot_obj_pos(maze, nsample=100, pad=0.1, min_dist=0.1, max_dist=0.5):
     """
     Generate robot and object positions with distance constraint
     """
     states = np.zeros((nsample, 4))
 
     for i in range(nsample):
-        x, y = maze.sample(pad)
-        states[i, 0] = x
-        states[i, 1] = y
+        x_obj, y_obj = maze.sample(pad)
+        states[i, 0] = x_obj
+        states[i, 1] = y_obj
 
         # Generate object position based on robot position
         while True:
-            x_obj, y_obj = maze.sample(pad)
-            dist = np.linalg.norm([x - x_obj, y - y_obj])
+            x_robot, y_robot = maze.sample(pad)
+            dist = np.linalg.norm([x_robot - x_obj, x_robot - y_obj])
             if dist > min_dist and dist < max_dist:
                 break
-        states[i, 2] = x_obj
-        states[i, 3] = y_obj
+        states[i, 2] = x_robot
+        states[i, 3] = y_robot
 
     return states
 
