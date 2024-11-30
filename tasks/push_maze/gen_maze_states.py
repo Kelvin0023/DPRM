@@ -98,23 +98,64 @@ def generate(maze, nsample=100, pad=0.05):
 
     return states
 
+def generate_robot_obj_pos(maze, nsample=100, pad=0.05, min_dist=0.1, max_dist=0.5):
+    """
+    Generate robot and object positions with distance constraint
+    """
+    states = np.zeros((nsample, 4))
+
+    for i in range(nsample):
+        x, y = maze.sample(pad)
+        states[i, 0] = x
+        states[i, 1] = y
+
+        # Generate object position based on robot position
+        while True:
+            x_obj, y_obj = maze.sample(pad)
+            dist = np.linalg.norm([x - x_obj, y - y_obj])
+            if dist > min_dist and dist < max_dist:
+                break
+        states[i, 2] = x_obj
+        states[i, 3] = y_obj
+
+    return states
+
 
 def plot(states, pngfile):
     plt.plot(states[:, 0], states[:, 1], "b.")
     plt.savefig(pngfile)
 
+def plot_robot_obj(states, pngfile):
+    plt.plot(states[:, 0], states[:, 1], "b.")
+    plt.plot(states[:, 2], states[:, 3], "r.")
+    plt.savefig(pngfile)
+
 
 if __name__ == "__main__":
-    maze = MazeC()
-    name = "maze_c"
+    # maze = MazeC()
+    # name = "maze_c"
+    #
+    # npfile = "tasks/maze/assets/reset_states/{}.npy".format(name)
+    # pngfile = "tasks/maze/assets/reset_states/{}.png".format(name)
+    # os.makedirs(os.path.dirname(npfile), exist_ok=True)
+    # state = generate(maze, nsample=10000)
+    # state = state.astype(dtype=np.float32)
+    #
+    # with open(npfile, "wb") as f:
+    #     np.save(f, state)
+    #
+    # plot(state, pngfile)
+
+    maze = MazeB()
+    name = "maze_b"
 
     npfile = "tasks/maze/assets/reset_states/{}.npy".format(name)
     pngfile = "tasks/maze/assets/reset_states/{}.png".format(name)
     os.makedirs(os.path.dirname(npfile), exist_ok=True)
-    state = generate(maze, nsample=10000)
+    state = generate_robot_obj_pos(maze, nsample=1000, min_dist=0.05, max_dist=0.1)
     state = state.astype(dtype=np.float32)
 
     with open(npfile, "wb") as f:
         np.save(f, state)
 
-    plot(state, pngfile)
+    plot_robot_obj(state, pngfile)

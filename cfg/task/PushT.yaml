@@ -1,6 +1,6 @@
 # sim
 decimation: 2
-episode_length_s: 3.0
+episode_length_s: 10.0
 
 # task
 num_actions: 2
