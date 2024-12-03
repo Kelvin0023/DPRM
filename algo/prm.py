@@ -1,15 +1,19 @@
 import torch
 import itertools
 import pickle
+
 try:
     # Debug drawing
     from omni.isaac.debug_draw import _debug_draw
+
     draw = _debug_draw.acquire_debug_draw_interface()
 except ImportError:
     pass
 
+
 class PRM:
     """ Prbabilistic Roadmap (PRM) planner for sampling and planning in the task space """
+
     def __init__(self, cfg, env, model_target, obs_policy_rms, obs_critic_rms, value_rms, device):
         self.cfg = cfg
         self.env = env
@@ -147,7 +151,8 @@ class PRM:
         # Concatenate only once for each buffer
         self.prm_children = torch.cat((self.prm_children, new_prm_children), dim=0)
         self.children_counter = torch.cat((self.children_counter, torch.zeros((num_nodes, 1), dtype=torch.int)), dim=0)
-        self.max_dist_in_goal = torch.cat((self.max_dist_in_goal, torch.zeros((num_nodes, 1), dtype=torch.float)), dim=0)
+        self.max_dist_in_goal = torch.cat((self.max_dist_in_goal, torch.zeros((num_nodes, 1), dtype=torch.float)),
+                                          dim=0)
         if self.compute_max_goal_dist:
             self.next_node = torch.cat((self.next_node, torch.zeros((num_nodes, 1), dtype=torch.int)), dim=0)
         self.prm_obs_policy_buf = torch.cat((self.prm_obs_policy_buf, new_prm_obs_policy_buf), dim=0)
@@ -163,15 +168,16 @@ class PRM:
         # Rollout for k steps
         self.plan_steps()
         self.add_nodes()
+        assert self.prm_q.size(0) == self.prm_children.size(0) == self.children_counter.size(0) == len(self.prm_parents) 
 
         if self.compute_max_goal_dist:
             self.max_dist = self.max_dist_in_goal.max().item()
             random_idx = torch.randint(0, self.prm_q.size(0), (self.prm_samples_per_epoch,))
             self.average_max_dist = self.max_dist_in_goal[random_idx].mean().item()
-            print("*** PRM nodes: ", self.prm_q.shape[0], ", max distance:", self.max_dist, "average max distance", self.average_max_dist, "***")
+            print("*** PRM nodes: ", self.prm_q.shape[0], ", max distance:", self.max_dist, "average max distance",
+                  self.average_max_dist, "***")
         else:
             print("*** PRM nodes: ", self.prm_q.shape[0], "***")
-
 
     def sample_and_set(self) -> None:
         """ Sample random points in q-space and set the env to these states """
@@ -185,8 +191,10 @@ class PRM:
             # (Some states are sampled randomly and the rest are sampled from the existing states in PRM)
             self.start_plan()
 
-        assert self.x_start.size(0) == self.prm_samples_per_epoch, "Number of samples should match the PRM samples per epoch"
-        assert self.x_start_idx.size(0) == self.prm_samples_per_epoch, "Number of indices should match the PRM samples per epoch"
+        assert self.x_start.size(
+            0) == self.prm_samples_per_epoch, "Number of samples should match the PRM samples per epoch"
+        assert self.x_start_idx.size(
+            0) == self.prm_samples_per_epoch, "Number of indices should match the PRM samples per epoch"
 
         # Sample goal states in the task space that are close to the chosen nodes
         self.x_goal = self.env.sample_random_goal_state(num_goal=self.prm_samples_per_epoch).cpu()
@@ -197,13 +205,13 @@ class PRM:
         if hasattr(self.env, "goal"):
             goals = torch.zeros_like(self.env.goal)
 
-
         # Set the environment states to the chosen nodes
         for i in range(self.prm_samples_per_epoch):
             start_states[self.envs_per_sample * i: self.envs_per_sample * (i + 1)] = self.x_start[i]
             # Set the goals to the sampled q_space goals
             if hasattr(self.env, "goal"):
-                goals[self.envs_per_sample * i: self.envs_per_sample * (i + 1)] = self.env.q_to_goal(self.x_goal[i].unsqueeze(0))
+                goals[self.envs_per_sample * i: self.envs_per_sample * (i + 1)] = self.env.q_to_goal(
+                    self.x_goal[i].unsqueeze(0))
 
         # Update the environment states and goals
         with torch.inference_mode():
@@ -244,7 +252,6 @@ class PRM:
                     self.x_start_idx[i] = self.prm_q.size(0) - 1
 
         self.create_child_list(num_new_nodes)
-
 
     def start_plan(self) -> None:
         """
@@ -417,7 +424,8 @@ class PRM:
         else:
             return ()
 
-    def add_existing_node_edge(self, parent_idx, existing_node_idx, env_id, obs_policy_buf, obs_critic_buf, actions_buf) -> None:
+    def add_existing_node_edge(self, parent_idx, existing_node_idx, env_id, obs_policy_buf, obs_critic_buf,
+                               actions_buf) -> None:
         """ Add an edge between the parent and an existing node in the graph """
         if self.children_counter[parent_idx] < self.max_children_per_node:
             # Update the parent list to add the new parent
@@ -442,6 +450,9 @@ class PRM:
             # Update the max distance in goal
             if self.compute_max_goal_dist:
                 self.update_max_goal_dist(self.prm_q.size(0) - 1)
+        else:
+            # If the children list is full, we only add the empty parent list
+            self.prm_parents.append([parent_idx.item()])
 
     def update_max_goal_dist(self, new_node_id) -> None:
         # Extract the parent index of the current node
@@ -454,14 +465,16 @@ class PRM:
             assert len(node_parents) == len(node_children)
 
             # Compute the distance in goal between the new nodes and these parents
-            dist_in_goal = self.env.compute_goal_distance(prm_nodes=self.prm_q[node_parents], goal=self.prm_q[new_node_id])
+            dist_in_goal = self.env.compute_goal_distance(prm_nodes=self.prm_q[node_parents],
+                                                          goal=self.prm_q[new_node_id])
             # Update the max distance in goal
             self.next_node[node_parents] = torch.where(
                 dist_in_goal.unsqueeze(1) > self.max_dist_in_goal[node_parents],
                 torch.tensor(node_children, dtype=torch.int).unsqueeze(1),
                 self.next_node[node_parents]
             )
-            self.max_dist_in_goal[node_parents] = torch.max(self.max_dist_in_goal[node_parents], dist_in_goal.unsqueeze(1))
+            self.max_dist_in_goal[node_parents] = torch.max(self.max_dist_in_goal[node_parents],
+                                                            dist_in_goal.unsqueeze(1))
 
             # Extract the parent of these parents nodes
             node_grandparents = []
@@ -507,8 +520,10 @@ class PRM:
                 draw.draw_lines(point_list_edge_0, point_list_edge_1, [edge_color], [1.0])
 
                 # draw "+" marker for the new node
-                point_list_node_0 = [(p[0] - 0.01, p[1], 0.01), (p[0], p[1] - 0.01, 0.01)] + self.env.scene.env_origins[0].cpu().numpy()
-                point_list_node_1 = [(p[0] + 0.01, p[1], 0.01), (p[0], p[1] + 0.01, 0.01)] + self.env.scene.env_origins[0].cpu().numpy()
+                point_list_node_0 = [(p[0] - 0.01, p[1], 0.01), (p[0], p[1] - 0.01, 0.01)] + self.env.scene.env_origins[
+                    0].cpu().numpy()
+                point_list_node_1 = [(p[0] + 0.01, p[1], 0.01), (p[0], p[1] + 0.01, 0.01)] + self.env.scene.env_origins[
+                    0].cpu().numpy()
                 node_colors = [node_color for _ in range(2)]
                 node_widths = [1.0 for _ in range(2)]
                 draw.draw_lines(point_list_node_0, point_list_node_1, node_colors, node_widths)
@@ -528,8 +543,12 @@ class PRM:
                 node_state = node.cpu().numpy()
 
                 # draw "+" marker for the selected node
-                point_list_node_0 = [(node_state[0] - 0.02, node_state[1], 0.02), (node_state[0], node_state[1] - 0.02, 0.02)] + self.env.scene.env_origins[0].cpu().numpy()
-                point_list_node_1 = [(node_state[0] + 0.02, node_state[1], 0.02), (node_state[0], node_state[1] + 0.02, 0.02)] + self.env.scene.env_origins[0].cpu().numpy()
+                point_list_node_0 = [(node_state[0] - 0.02, node_state[1], 0.02),
+                                     (node_state[0], node_state[1] - 0.02, 0.02)] + self.env.scene.env_origins[
+                                        0].cpu().numpy()
+                point_list_node_1 = [(node_state[0] + 0.02, node_state[1], 0.02),
+                                     (node_state[0], node_state[1] + 0.02, 0.02)] + self.env.scene.env_origins[
+                                        0].cpu().numpy()
                 node_colors = [node_color for _ in range(2)]
                 node_widths = [3.0 for _ in range(2)]
                 draw.draw_lines(point_list_node_0, point_list_node_1, node_colors, node_widths)
@@ -554,7 +573,8 @@ class PRM:
         # Sample nodes in PRM to start the search
         # Collect the nodes in the PRM with at least one children
         nodes_with_children_index = torch.nonzero(self.children_counter.squeeze() > 0).squeeze()
-        self.sampled_idx = nodes_with_children_index[torch.randint(0, nodes_with_children_index.size(0), (num_searches,))]
+        self.sampled_idx = nodes_with_children_index[
+            torch.randint(0, nodes_with_children_index.size(0), (num_searches,))]
 
         # Initialize the mask to keep track of walks that should stop
         zero_children_mask = torch.zeros(num_searches, dtype=torch.bool)
@@ -590,9 +610,11 @@ class PRM:
             if search_for_planner or hasattr(self.env, "goal"):
                 valid_search_goal = goal[~zero_children_mask]
                 # Select the next node based on the critic
-                next_node_idx = self.find_next_node(valid_search_idx.int(), valid_search_goal, critic, select_type="softmax", search_for_planner=search_for_planner)
+                next_node_idx = self.find_next_node(valid_search_idx.int(), valid_search_goal, critic,
+                                                    select_type="softmax", search_for_planner=search_for_planner)
             else:
-                next_node_idx = self.find_next_node(valid_search_idx.int(), None, critic, select_type="softmax", search_for_planner=False)
+                next_node_idx = self.find_next_node(valid_search_idx.int(), None, critic, select_type="softmax",
+                                                    search_for_planner=False)
 
             # # Fetch index of children with the max goal distance
             # next_node_idx = torch.zeros((valid_search_idx.shape[0], 1), dtype=torch.int64)
@@ -613,9 +635,11 @@ class PRM:
             state_buf[~zero_children_mask, step, :] = sampled_state.cpu()
 
             # Extract the selected obs and actions between the nodes
-            sampled_obs_policy = self.prm_obs_policy_buf[valid_search_idx.unsqueeze(1).int(), next_node_idx, :, :].squeeze()
+            sampled_obs_policy = self.prm_obs_policy_buf[valid_search_idx.unsqueeze(1).int(), next_node_idx, :,
+                                 :].squeeze()
             obs_policy_buf[~zero_children_mask, step, :, :] = sampled_obs_policy
-            sampled_obs_critic = self.prm_obs_critic_buf[valid_search_idx.unsqueeze(1).int(), next_node_idx, :, :].squeeze()
+            sampled_obs_critic = self.prm_obs_critic_buf[valid_search_idx.unsqueeze(1).int(), next_node_idx, :,
+                                 :].squeeze()
             obs_critic_buf[~zero_children_mask, step, :, :] = sampled_obs_critic
             sampled_act = self.prm_action_buf[valid_search_idx.unsqueeze(1).int(), next_node_idx, :, :].squeeze()
             act_buf[~zero_children_mask, step, :, :] = sampled_act
@@ -644,11 +668,12 @@ class PRM:
               updated_act_buf.size(),
               updated_state_buf.size(),
               updated_goal_buf.size() if search_for_planner or hasattr(self.env, "goal") else None
-        )
+              )
 
         return search, updated_obs_policy_buf, updated_obs_critic_buf, updated_act_buf, updated_state_buf, updated_goal_buf
 
-    def find_next_node(self, current_node_idx, goal, critic, select_type="softmax", search_for_planner=False) -> torch.Tensor:
+    def find_next_node(self, current_node_idx, goal, critic, select_type="softmax",
+                       search_for_planner=False) -> torch.Tensor:
         if hasattr(self.env, "goal"):
             critic_goal_start, critic_goal_end = self.env.cfg.goal_idx_critic
 
@@ -667,7 +692,8 @@ class PRM:
             flatten_node_state = node_state.view(-1, self.env.planning_state_dim).to(self.device)
             flatten_node_goal = node_goal.view(-1, self.env.planner_goal_dim).to(self.device)
             flatten_node_state_goal = torch.cat((flatten_node_state, flatten_node_goal), dim=1)
-            flatten_node_act_chunk = node_act_chunk.view(-1, self.prm_rollout_len, self.env.cfg.num_actions).to(self.device)
+            flatten_node_act_chunk = node_act_chunk.view(-1, self.prm_rollout_len, self.env.cfg.num_actions).to(
+                self.device)
             processed_flatten_node_input = self.state_rms(flatten_node_state_goal)
         else:
             # Extract obs_critic and action chunks for the current node
@@ -680,7 +706,8 @@ class PRM:
                 node_obs_critic[:, :, critic_goal_start:critic_goal_end] = goal.unsqueeze(1)
 
             flatten_node_obs_critic = node_obs_critic.view(-1, self.env.cfg.num_states).to(self.device)
-            flatten_node_act_chunk = node_act_chunk.view(-1, self.prm_rollout_len, self.env.cfg.num_actions).to(self.device)
+            flatten_node_act_chunk = node_act_chunk.view(-1, self.prm_rollout_len, self.env.cfg.num_actions).to(
+                self.device)
             processed_flatten_node_input = self.obs_critic_rms(flatten_node_obs_critic)
 
         # Predict the Q value of the children
@@ -750,14 +777,16 @@ class PRM:
                 if search_for_planner:
                     # Add goal to the goal buffer
                     if update_goal:
-                        new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end].repeat(valid_obs_policy.size(0), 1).cpu()
+                        new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end].repeat(
+                            valid_obs_policy.size(0), 1).cpu()
                     else:
                         new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), 1).cpu()
                     updated_goal_buf = torch.cat((updated_goal_buf, new_goal), dim=0)
                 elif hasattr(self.env, "goal"):
                     # Add goal to the goal buffer
                     if update_goal:
-                        new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end].repeat(valid_obs_policy.size(0), 1).cpu()
+                        new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end].repeat(
+                            valid_obs_policy.size(0), 1).cpu()
                     else:
                         new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), 1).cpu()
                     updated_goal_buf = torch.cat((updated_goal_buf, new_goal), dim=0)
@@ -1131,7 +1160,6 @@ class PRM:
                 nodes_list = next_nodes_list
                 dist_list = next_dist_list
 
-
         # Update the obs buffers with the new goal
         obs_policy_buf[:, policy_goal_start:policy_goal_end] = new_goal
         obs_critic_buf[:, critic_goal_start:critic_goal_end] = new_goal
@@ -1205,7 +1233,8 @@ def find_last_valid_indices(obs_policy_buf):
     last_valid_indices = torch.full((obs_policy_buf.size(0), obs_policy_buf.size(1)), -1, device=obs_policy_buf.device)
 
     # Find the indices where valid entries occur
-    valid_indices = torch.arange(obs_policy_buf.size(1), device=obs_policy_buf.device).unsqueeze(0).expand_as(reduced_valid_mask)
+    valid_indices = torch.arange(obs_policy_buf.size(1), device=obs_policy_buf.device).unsqueeze(0).expand_as(
+        reduced_valid_mask)
 
     # Mask out the valid indices
     last_valid_indices[reduced_valid_mask] = valid_indices[reduced_valid_mask]
