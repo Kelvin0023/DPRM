@@ -1066,11 +1066,14 @@ class PRM:
                             self._visualize_nodes(node=self.prm_q[selected_parents_idx[i]], node_color=[0, 0, 1, 1])
 
                     # Extract the stored data
-                    (
-                        obs_policy,
-                        obs_critic,
-                        actions
-                    ) = self.find_stored_data(goal_node_idx, selected_parents_idx)
+                    try:
+                        (
+                            obs_policy,
+                            obs_critic,
+                            actions
+                        ) = self.find_stored_data(goal_node_idx, selected_parents_idx)
+                    except:
+                        break
                     # Update the buffer
                     obs_policy_buf = torch.cat((obs_policy_buf, obs_policy), dim=0)
                     obs_critic_buf = torch.cat((obs_critic_buf, obs_critic), dim=0)
@@ -1107,11 +1110,14 @@ class PRM:
                                 self._visualize_nodes(node=self.prm_q[selected_parents_idx[i]], node_color=[0, 0, 1, 1])
 
                         # Extract the stored data
-                        (
-                            obs_policy,
-                            obs_critic,
-                            actions
-                        ) = self.find_stored_data(node_child_idx, selected_parents_idx)
+                        try:
+                            (
+                                obs_policy,
+                                obs_critic,
+                                actions
+                            ) = self.find_stored_data(node_child_idx, selected_parents_idx)
+                        except:
+                            break
                         # Update the buffer
                         obs_policy_buf = torch.cat((obs_policy_buf, obs_policy), dim=0)
                         obs_critic_buf = torch.cat((obs_critic_buf, obs_critic), dim=0)
