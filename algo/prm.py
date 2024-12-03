@@ -419,10 +419,10 @@ class PRM:
 
     def add_existing_node_edge(self, parent_idx, existing_node_idx, env_id, obs_policy_buf, obs_critic_buf, actions_buf) -> None:
         """ Add an edge between the parent and an existing node in the graph """
-        # Update the parent list to add the new parent
-        self.prm_parents[existing_node_idx].append(parent_idx.item())
-        # Update the children list to add the new child
         if self.children_counter[parent_idx] < self.max_children_per_node:
+            # Update the parent list to add the new parent
+            self.prm_parents[existing_node_idx].append(parent_idx.item())
+            # Update the children list to add the new child
             self.prm_children[parent_idx][self.children_counter[parent_idx]] = float(existing_node_idx)
             # Increment the children counter and update the obs, states and actions buffer
             self.update_counter_and_buffers(parent_idx, env_id, obs_policy_buf, obs_critic_buf, actions_buf)
@@ -432,10 +432,10 @@ class PRM:
 
     def add_new_node_edge(self, parent_idx, env_id, obs_policy_buf, obs_critic_buf, actions_buf) -> None:
         """ Add an edge between the parent and a new node in the graph """
-        # Update the parent list to add the new parent
-        self.prm_parents.append([parent_idx.item()])
-        # Update the children list to add the new child
         if self.children_counter[parent_idx] < self.max_children_per_node:
+            # Update the parent list to add the new parent
+            self.prm_parents.append([parent_idx.item()])
+            # Update the children list to add the new child
             self.prm_children[parent_idx][self.children_counter[parent_idx]] = self.prm_q.size(0) - 1
             # Increment the children counter and update the obs_policy, obs_critic and actions buffer
             self.update_counter_and_buffers(parent_idx, env_id, obs_policy_buf, obs_critic_buf, actions_buf)
