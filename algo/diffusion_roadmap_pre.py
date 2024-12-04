@@ -118,13 +118,6 @@ class DiffusionRoadmap:
         self.models.append(self.model)
         self.models.append(self.model_target)
 
-        # ---- Replay Buffer ----
-        self.replay_buffer = ReplayBuffer(
-            buffer_size=1000000,
-            batch_size=self.cfg["policy"]["trainer"]["batch_size"],
-            device=self.device,
-        )
-
         # ---- Trainer ----
         logger.log(logging.INFO, "Creating trainers")
         model_trainer_cfg = self.cfg["policy"]["trainer"]
