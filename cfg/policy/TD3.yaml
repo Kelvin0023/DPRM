@@ -1,0 +1,27 @@
+start_timesteps: 10
+
+network:
+  actor_units: [1024, 1024, 1024]
+  critic_units: [256, 256, 256]
+
+trainer:
+  normalize_value: True
+  discount: 0.99
+
+  batch_size: 1024
+  epochs: 1
+
+  # policy noise
+  policy_noise: 0.2
+  noise_clip: 0.5
+
+  # max action
+  max_action: 1.0
+
+  # target update
+  tau: 0.005
+  policy_freq: 2
+
+
+
+

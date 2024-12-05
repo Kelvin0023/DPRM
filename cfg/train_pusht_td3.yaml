@@ -1,0 +1,43 @@
+defaults:
+  - /task/PushT
+  - /policy/TD3
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# task id
+task_id: "Isaac-PushT-v0"
+
+# seed - set to -1 to choose random seed
+seed: 0
+
+## device config
+gpu: '0'
+
+# disable fabric and use USD I/O operations
+disable_fabric: False
+
+# environment number
+num_envs: 8192
+
+# disable graphics
+headless: True
+
+# device for running physics simulation
+pipeline: 'gpu'
+
+# device for running planner and RL
+rl_device: 'cuda:0'
+
+# snapshot setting
+save_best_after: 5
+save_frequency: 500
+max_agent_steps: 10_000_000_000
+eval_frequency: 20
+
+# test flag
+test: False
+# path to the saved model
+load_path: ""
+
+save_prm: False
+saved_file_name_format: "PushT_rollout4_thres0.2"
