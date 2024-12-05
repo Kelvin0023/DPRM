@@ -397,11 +397,9 @@ class DiffusionRoadmap:
         self.max_dist.append(self.planner.max_dist)
         self.avg_max_dist.append(self.planner.average_max_dist)
 
-        # Train the task model
-        self.set_eval()
+        # Restore the on policy context
+        self.obs = self.env.restore_episode_context(ep_ctxt)
 
-        # Extracted walks w.r.t the task critic
-        self.env.reset_dist_type = "eval"
         # walks, obs_policy_buf, obs_critic_buf, act_buf, state_buf, goal_buf = self.planner.perform_search(
         #     critic=self.model_target.critic,
         #     num_searches=100,
@@ -445,9 +443,6 @@ class DiffusionRoadmap:
         self.bc_replay_buffer.store(obs_policy_demo, act_demo)
 
         self.data_collect_time += time.time() - _t
-
-        # Restore the on policy context
-        self.obs = self.env.restore_episode_context(ep_ctxt)
 
         # Train with the extracted walks
         _t = time.time()
