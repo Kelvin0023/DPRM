@@ -56,7 +56,7 @@ class DiffusionRoadmap:
             device=self.device,
         )
         self.replay_buffer = ReplayBuffer(
-            buffer_size=50000,
+            buffer_size=100000,
             batch_size=self.cfg["policy"]["trainer"]["batch_size"],
             device=self.device,
         )
