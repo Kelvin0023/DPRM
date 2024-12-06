@@ -1,0 +1,30 @@
+trainer:
+  # learning rate and kl threshold
+  learning_rate: 3e-4
+  weight_decay: 0.0
+  # PPO batch collection
+  num_mini_batches: 4
+
+  # value normalization or scaling
+  normalize_value: False
+  value_scale: 1.0
+
+  # grad clipping
+  truncate_grads: True
+  grad_norm: 1.0
+
+  step_start_ema: 1000
+  ema_decay: 0.995
+  update_ema_every: 5
+
+  # batch size
+  batch_size: 1024
+  # mini epochs
+  iterations: 20
+
+  eta: 10.0
+  tau: 0.005
+  discount: 0.99
+
+  lr_decay: False
+  lr_max_T: 1000

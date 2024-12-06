@@ -1,0 +1,41 @@
+defaults:
+  - /task/Maze
+  - /planner/PRM_maze_prev
+  - /policy/DiffQL
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# task id
+task_id: "Isaac-MazeBot-v0"
+
+# seed - set to -1 to choose random seed
+seed: 0
+
+## device config
+gpu: '0'
+
+# disable fabric and use USD I/O operations
+disable_fabric: False
+
+# environment number
+num_envs: 4096
+
+# disable graphics
+headless: True
+
+# device for running physics simulation
+pipeline: 'gpu'
+
+# device for running planner and RL
+rl_device: 'cuda:0'
+
+# snapshot setting
+save_best_after: 5
+save_frequency: 500
+max_agent_steps: 10_000_000_000
+eval_frequency: 20
+
+# test flag
+test: False
+# path to the saved model
+load_path: "/data/kai/diffuse-plan-learn/outputs/2024-08-27/19-00-36/nn/best.pth"
