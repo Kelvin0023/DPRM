@@ -66,7 +66,7 @@ class PushTEnv(DirectRLEnv):
 
         # planning state (x) dimension
         self.planning_state_dim = 15  # 2 for robot position, 2 for robot velocity, 2 for object position, 4 for object orientation and 6 for object linear and angular velocity
-        self.planner_goal_dim = 6  # 2 for goal position and 4 for goal orientation
+        self.planner_goal_dim = 3  # 2 for goal position and 1 for goal yaw
 
         # create goal buffer
         goal_buf_size = 5000
