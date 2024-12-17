@@ -51,7 +51,7 @@ class PushTEnv(DirectRLEnv):
         self.goal_rot = torch.zeros((self.num_envs, 4), dtype=torch.float, device=self.device)
         self.goal_rot[:, 0] = 1.0
         self.goal_yaw = rotation_around_z(self.goal_rot).unsqueeze(1)
-        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot, self.goal_yaw], dim=1)
+        self.goal = torch.cat([self.goal_pos_xy, self.goal_yaw], dim=1)
 
         # initialize goal marker
         self.goal_markers = VisualizationMarkers(self.cfg.goal_object_cfg)
@@ -127,11 +127,10 @@ class PushTEnv(DirectRLEnv):
                 self.robot.data.joint_pos.view(self.num_envs, -1),  # robot position (2)
                 self.robot.data.joint_vel.view(self.num_envs, -1),  # robot velocity (2)
                 self.object_pos_xy,  # object x and y coordinate (2)
-                self.object_rotation,  # object orientation (4)
                 self.object_yaw,  # object rotation around z-axis (1)
                 self.object_lin_vel_xy,  # object linear velocity (2)
                 self.object_ang_vel,  # object angular velocity (3)
-                self.goal,  # goal x and y coordinate, orientation and yaw (2+4+1)
+                self.goal,  # goal x and y coordinate, and yaw (2+1)
             ),
             dim=-1,
         )
@@ -285,10 +284,8 @@ class PushTEnv(DirectRLEnv):
         self.goal_rot[env_ids] = gen_rot_around_z(len(env_ids), device=self.device)
         # compute goal yaw
         self.goal_yaw = rotation_around_z(self.goal_rot).unsqueeze(1)
-        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot, self.goal_yaw], dim=1)
+        self.goal = torch.cat([self.goal_pos_xy, self.goal_yaw], dim=1)
         self.goal_markers.visualize(goal_pos, self.goal_rot)
-
-
 
     def step_without_reset(self, action: torch.Tensor) -> VecEnvStepReturn:
         """ Execute one time-step of the environment's dynamics without resetting the environment.
@@ -528,7 +525,7 @@ class PushTEnv(DirectRLEnv):
         self.goal_rot[env_ids] = gen_rot_around_z(len(env_ids), device=self.device)
         # compute goal yaw
         self.goal_yaw = rotation_around_z(self.goal_rot).unsqueeze(1)
-        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot, self.goal_yaw], dim=1)
+        self.goal = torch.cat([self.goal_pos_xy, self.goal_yaw], dim=1)
         self.goal_markers.visualize(goal_pos, self.goal_rot)
 
     def q_to_goal(self, q: torch.Tensor) -> torch.Tensor:
@@ -539,7 +536,7 @@ class PushTEnv(DirectRLEnv):
         goal_rot = q[:, 6:10]
         # compute yaw
         goal_yaw = rotation_around_z(goal_rot).unsqueeze(1)
-        return torch.cat([goal_pos, goal_rot, goal_yaw], dim=1)
+        return torch.cat([goal_pos, goal_yaw], dim=1)
 
     def compute_goal_distance(self, prm_nodes: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
         """
