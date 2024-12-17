@@ -58,16 +58,16 @@ class PushTEnvCfg(DirectRLEnvCfg):
     decimation = 2
     episode_length_s = 10.0
     num_actions = 2
-    num_observations = 21
-    num_states = 21
+    num_observations = 23  # 21
+    num_states = 23  # 21
     num_q_space = 15
     max_episode_steps = 600
 
     # PRM config for observation update
-    extracted_goal_idx_policy = (4, 10)  # indices of the current observation (obj_pose)
-    goal_idx_policy = (15, 21)  # indices of the goal observation (goal_pose)
-    extracted_goal_idx_critic = (4, 10)  # indices of the current critic observation (obj_pose)
-    goal_idx_critic = (15, 21)  # indices of the goal critic observation (goal_pose)
+    extracted_goal_idx_policy = (4, 11)  # (4, 10)  # indices of the current observation (obj_pose)
+    goal_idx_policy = (16, 23)  # (15, 21)  # indices of the goal observation (goal_pose)
+    extracted_goal_idx_critic = (4, 11)  # (4, 10)  # indices of the current critic observation (obj_pose)
+    goal_idx_critic = (16, 23)  # (15, 21)  # indices of the goal critic observation (goal_pose)
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
