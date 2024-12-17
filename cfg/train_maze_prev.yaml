@@ -1,6 +1,6 @@
 defaults:
   - /task/Maze
-  - /planner/PRM_maze_prev
+  - /planner/PRM_Maze
   - /policy/DiffQL
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled

@@ -1,6 +1,6 @@
 defaults:
   - /task/PushMaze
-  - /planner/PRM_PushMaze_prev
+  - /planner/PRM_PushMaze
   - /policy/DiffQL
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled

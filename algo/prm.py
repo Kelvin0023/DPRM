@@ -1,11 +1,9 @@
 import torch
-import itertools
 import pickle
 
 try:
     # Debug drawing
     from omni.isaac.debug_draw import _debug_draw
-
     draw = _debug_draw.acquire_debug_draw_interface()
 except ImportError:
     pass
@@ -14,10 +12,11 @@ except ImportError:
 class PRM:
     """ Prbabilistic Roadmap (PRM) planner for sampling and planning in the task space """
 
-    def __init__(self, cfg, env, model_target, obs_policy_rms, obs_critic_rms, value_rms, device):
+    def __init__(self, cfg, env, actor_target, critic_target, obs_policy_rms, obs_critic_rms, value_rms, device):
         self.cfg = cfg
         self.env = env
-        self.model_target = model_target
+        self.actor_target = actor_target
+        self.critic_target = critic_target
         self.obs_policy_rms = obs_policy_rms
         self.obs_critic_rms = obs_critic_rms
         self.value_rms = value_rms
@@ -191,10 +190,10 @@ class PRM:
             # (Some states are sampled randomly and the rest are sampled from the existing states in PRM)
             self.start_plan()
 
-        assert self.x_start.size(
-            0) == self.prm_samples_per_epoch, "Number of samples should match the PRM samples per epoch"
-        assert self.x_start_idx.size(
-            0) == self.prm_samples_per_epoch, "Number of indices should match the PRM samples per epoch"
+        assert self.x_start.size(0) == self.prm_samples_per_epoch, \
+            "Number of samples should match the PRM samples per epoch"
+        assert self.x_start_idx.size(0) == self.prm_samples_per_epoch, \
+            "Number of indices should match the PRM samples per epoch"
 
         # Sample goal states in the task space that are close to the chosen nodes
         self.x_goal = self.env.sample_random_goal_state(num_goal=self.prm_samples_per_epoch).cpu()
@@ -210,8 +209,8 @@ class PRM:
             start_states[self.envs_per_sample * i: self.envs_per_sample * (i + 1)] = self.x_start[i]
             # Set the goals to the sampled q_space goals
             if hasattr(self.env, "goal"):
-                goals[self.envs_per_sample * i: self.envs_per_sample * (i + 1)] = self.env.q_to_goal(
-                    self.x_goal[i].unsqueeze(0))
+                goals[self.envs_per_sample * i: self.envs_per_sample * (i + 1)] \
+                    = (self.env.q_to_goal(self.x_goal[i].unsqueeze(0)))
 
         # Update the environment states and goals
         with torch.inference_mode():
@@ -285,6 +284,7 @@ class PRM:
                 self.prm_parents.append([])
                 num_new_nodes += 1
                 self.x_start_idx[i] = self.prm_q.size(0) - 1
+        # Create the new children list for the new nodes
         self.create_child_list(num_new_nodes)
         # Add the index of the existing states
         self.x_start_idx[num_new_sampled_states:] = chosen_nodes_idx
@@ -294,10 +294,7 @@ class PRM:
         # Normalize the observation
         processed_obs = self.obs_policy_rms(obs_dict['policy'])
         # Get predicted actions from target actor
-        pred_action_chunks = self.model_target(
-            cond={"state": processed_obs},
-            deterministic=False,
-        )
+        pred_action_chunks = self.actor_target.sample_action_chunks(processed_obs)
         return {"actions": pred_action_chunks}
 
     def plan_steps(self) -> None:
@@ -610,11 +607,20 @@ class PRM:
             if search_for_planner or hasattr(self.env, "goal"):
                 valid_search_goal = goal[~zero_children_mask]
                 # Select the next node based on the critic
-                next_node_idx = self.find_next_node(valid_search_idx.int(), valid_search_goal, critic,
-                                                    select_type="softmax", search_for_planner=search_for_planner)
+                next_node_idx = self.find_next_node(
+                    valid_search_idx.int(),
+                    valid_search_goal,
+                    critic,
+                    select_type="softmax",
+                    search_for_planner=search_for_planner
+                )
             else:
-                next_node_idx = self.find_next_node(valid_search_idx.int(), None, critic, select_type="softmax",
-                                                    search_for_planner=False)
+                next_node_idx = self.find_next_node(
+                    valid_search_idx.int(),
+                    None, critic,
+                    select_type="softmax",
+                    search_for_planner=False
+                )
 
             # # Fetch index of children with the max goal distance
             # next_node_idx = torch.zeros((valid_search_idx.shape[0], 1), dtype=torch.int64)
@@ -672,8 +678,14 @@ class PRM:
 
         return search, updated_obs_policy_buf, updated_obs_critic_buf, updated_act_buf, updated_state_buf, updated_goal_buf
 
-    def find_next_node(self, current_node_idx, goal, critic, select_type="softmax",
-                       search_for_planner=False) -> torch.Tensor:
+    def find_next_node(
+            self,
+            current_node_idx,
+            goal,
+            critic,
+            select_type="softmax",
+            search_for_planner=False
+    ) -> torch.Tensor:
         if hasattr(self.env, "goal"):
             critic_goal_start, critic_goal_end = self.env.cfg.goal_idx_critic
 
@@ -711,7 +723,7 @@ class PRM:
             processed_flatten_node_input = self.obs_critic_rms(flatten_node_obs_critic)
 
         # Predict the Q value of the children
-        pred_children_value = critic.sample_min(processed_flatten_node_input, flatten_node_act_chunk)
+        pred_children_value = critic.sample_min_q(processed_flatten_node_input, flatten_node_act_chunk)
         pred_children_value = pred_children_value.view(current_node_idx.shape[0], self.max_children_per_node)
 
         for i in range(current_node_idx.shape[0]):

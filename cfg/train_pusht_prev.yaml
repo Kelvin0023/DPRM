@@ -1,6 +1,6 @@
 defaults:
   - /task/PushT
-  - /planner/PRM_PushT_prev
+  - /planner/PRM_PushT
   - /policy/DiffQL
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled

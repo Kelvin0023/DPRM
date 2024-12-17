@@ -115,14 +115,12 @@ class DiffusionRoadmap:
         self.planner = hydra.utils.get_class(planner_cfg["_target_"])(
             cfg=planner_cfg,
             env=env,
-            model=self.actor_target,  # use the target task actor for planning
-            critic=self.critic_target,  # use the target task critic for planning
+            actor_target=self.actor_target,  # use the target task actor for planning
+            critic_target=self.critic_target,  # use the target task critic for planning
             obs_policy_rms=self.obs_policy_rms,
             obs_critic_rms=self.obs_critic_rms,
-            state_rms=self.state_rms,
             value_rms=self.value_rms,
             device=self.device,
-            separate_planning_model=False,
         )
 
         # ---- Output Dir ----
