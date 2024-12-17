@@ -371,8 +371,8 @@ class DiffusionRoadmap:
             step_loop_num += 1
 
         # Initialize the reward sum and not done tensor
-        reward_sum = torch.zeros((state_buf.size(0), 1), device=self.device)
-        env_not_dones = torch.ones((state_buf.size(0), 1), dtype=torch.int, device=self.device)
+        reward_sum = torch.zeros((state_buf.size(0),), device=self.device)
+        env_not_dones = torch.ones((state_buf.size(0),), dtype=torch.int, device=self.device)
         obs_policy_prim = torch.empty((0, self.obs_policy_dim), device=self.device)
         obs_critic_prim = torch.empty((0, self.obs_critic_dim), device=self.device)
 
@@ -390,8 +390,8 @@ class DiffusionRoadmap:
             if hasattr(self.env, "goal"):
                 selected_goal_buf = goal_buf[start_idx:end_idx]
 
-            selected_reward_sum = torch.zeros((end_idx - start_idx, 1), device=self.device)
-            selected_env_not_dones = torch.ones((end_idx - start_idx, 1), dtype=torch.int, device=self.device)
+            selected_reward_sum = torch.zeros((end_idx - start_idx,), device=self.device)
+            selected_env_not_dones = torch.ones((end_idx - start_idx,), dtype=torch.int, device=self.device)
 
             # environment index that are used to step the actions
             used_env_idx = torch.tensor(list(range(end_idx - start_idx)))
@@ -414,10 +414,9 @@ class DiffusionRoadmap:
                     padded_action = torch.zeros((self.env.num_envs, self.act_dim), device=self.device)
                     padded_action[used_env_idx, :] = selected_act_buf[:, j]
                     new_obs_dict, rewards, dones, _, infos = self.env.step_without_reset(padded_action)
-                    rewards = rewards.unsqueeze(1)
-                    not_dones = 1.0 - dones.float().unsqueeze(1)
+                    not_dones = 1.0 - dones.float()
                     selected_env_not_dones = torch.logical_and(selected_env_not_dones, not_dones[used_env_idx])
-                    selected_reward_sum += (self.gamma ** j) * selected_env_not_dones * rewards[used_env_idx, :]
+                    selected_reward_sum += (self.gamma ** j) * selected_env_not_dones * rewards[used_env_idx]
 
                 # Update the reward sum and not done tensor
                 reward_sum[start_idx:end_idx] = selected_reward_sum
