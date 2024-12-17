@@ -50,7 +50,8 @@ class PushTEnv(DirectRLEnv):
         self.goal_pos_xy = torch.zeros((self.num_envs, 2), dtype=torch.float, device=self.device)
         self.goal_rot = torch.zeros((self.num_envs, 4), dtype=torch.float, device=self.device)
         self.goal_rot[:, 0] = 1.0
-        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot], dim=1)
+        self.goal_yaw = rotation_around_z(self.goal_rot).unsqueeze(1)
+        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot, self.goal_yaw], dim=1)
 
         # initialize goal marker
         self.goal_markers = VisualizationMarkers(self.cfg.goal_object_cfg)
@@ -127,9 +128,10 @@ class PushTEnv(DirectRLEnv):
                 self.robot.data.joint_vel.view(self.num_envs, -1),  # robot velocity (2)
                 self.object_pos_xy,  # object x and y coordinate (2)
                 self.object_rotation,  # object orientation (4)
+                self.object_yaw,  # object rotation around z-axis (1)
                 self.object_lin_vel_xy,  # object linear velocity (2)
                 self.object_ang_vel,  # object angular velocity (3)
-                self.goal,  # goal x and y coordinate and orientation (2+4)
+                self.goal,  # goal x and y coordinate, orientation and yaw (2+4+1)
             ),
             dim=-1,
         )
@@ -281,8 +283,12 @@ class PushTEnv(DirectRLEnv):
         goal_pos += self.scene.env_origins  # add the origin of each environment
         # sample random goal orientation
         self.goal_rot[env_ids] = gen_rot_around_z(len(env_ids), device=self.device)
-        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot], dim=1)
+        # compute goal yaw
+        self.goal_yaw = rotation_around_z(self.goal_rot).unsqueeze(1)
+        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot, self.goal_yaw], dim=1)
         self.goal_markers.visualize(goal_pos, self.goal_rot)
+
+
 
     def step_without_reset(self, action: torch.Tensor) -> VecEnvStepReturn:
         """ Execute one time-step of the environment's dynamics without resetting the environment.
@@ -358,6 +364,10 @@ class PushTEnv(DirectRLEnv):
         # compute object linear and angular velocity
         self.object_lin_vel_xy = self.object.data.root_lin_vel_w[:, 0:2]
         self.object_ang_vel = self.object.data.root_ang_vel_w
+
+        # compute the rotation around z-axis for the object and goal
+        self.object_yaw = rotation_around_z(self.object_rotation).unsqueeze(1)
+        self.goal_yaw = rotation_around_z(self.goal_rot).unsqueeze(1)
 
     def compute_intermediate_values(self) -> None:
         """ A public function to update intermediate values of the environment. """
@@ -516,14 +526,20 @@ class PushTEnv(DirectRLEnv):
         goal_pos += self.scene.env_origins  # add the origin of each environment
         # set goal orientation
         self.goal_rot[env_ids] = gen_rot_around_z(len(env_ids), device=self.device)
-        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot], dim=1)
+        # compute goal yaw
+        self.goal_yaw = rotation_around_z(self.goal_rot).unsqueeze(1)
+        self.goal = torch.cat([self.goal_pos_xy, self.goal_rot, self.goal_yaw], dim=1)
         self.goal_markers.visualize(goal_pos, self.goal_rot)
-
 
     def q_to_goal(self, q: torch.Tensor) -> torch.Tensor:
         """ Extract goal position from q_state """
-        goal = q[:, 4:10]  # extract obj_pos_xy and obj_rot from q_state
-        return goal
+        # extract obj_pos_xy from q_state
+        goal_pos = q[:, 4:6]
+        # extract obj_rot from q_state
+        goal_rot = q[:, 6:10]
+        # compute yaw
+        goal_yaw = rotation_around_z(goal_rot).unsqueeze(1)
+        return torch.cat([goal_pos, goal_rot, goal_yaw], dim=1)
 
     def compute_goal_distance(self, prm_nodes: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
         """
@@ -717,6 +733,25 @@ def quat_to_angle_axis(q):
     mask_expand = mask.unsqueeze(-1)
     axis = torch.where(mask_expand, axis, default_axis)
     return angle, axis
+
+@torch.jit.script
+def rotation_around_z(quaternions):
+    """
+    Computes the rotation around the z-axis (yaw) from a batch of quaternions.
+
+    Parameters:
+        quaternions (torch.Tensor): A tensor of shape (env_num, 4) where each row represents a quaternion (w, x, y, z).
+
+    Returns:
+        torch.Tensor: A tensor of shape (batch_size,) containing the yaw angles (rotation around the z-axis) in radians for each quaternion.
+    """
+    # Ensure the input is a tensor
+    quaternions = torch.as_tensor(quaternions, dtype=torch.float32)
+    # Extract components of the quaternions
+    w, x, y, z = quaternions[:, 0], quaternions[:, 1], quaternions[:, 2], quaternions[:, 3]
+    # Compute yaw (rotation around z-axis) for the batch
+    yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (y ** 2 + z ** 2))
+    return yaw
 
 
 
