@@ -71,7 +71,7 @@ def build_learning_env(cfg: DictConfig):
     agent = DiffusionRoadmap(cfg=maze_cfg, env=env, output_dir=output_dir)
 
     wandb.init(
-        project="PushMaze",  # set the wandb project where this run will be logged
+        project="PushMaze_prev",  # set the wandb project where this run will be logged
         # config=OmegaConf.to_container(cfg, resolve=False),  # track hyperparameters and run metadata
         name=output_dir,
     )
