@@ -174,7 +174,6 @@ class DiffusionQL(object):
 
             # total actor loss
             actor_loss = bc_loss + self.eta * q_loss
-            # actor_loss = bc_loss + self.eta * q_loss + reward_loss
 
             # Step the loss for actor network
             self.actor_optimizer.zero_grad()

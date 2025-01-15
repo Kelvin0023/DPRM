@@ -66,7 +66,7 @@ class DiffusionRoadmap:
             chunk_size=self.chunk_size,
             device=self.device,
             beta_schedule="cosine",
-            num_timesteps=50,
+            num_timesteps=20,
         ).to(self.device)
 
         # create Diffusion Critic
@@ -328,6 +328,11 @@ class DiffusionRoadmap:
         # Execute PRM planning steps
         _t = time.time()
         self.set_eval()
+
+        # Save the episode context
+        ep_ctxt = self.env.save_episode_context()
+
+        # Perform PRM planning step
         self.planner.run_prm()
 
         # Train the task model
@@ -337,9 +342,18 @@ class DiffusionRoadmap:
         self.env.reset_dist_type = "train"
         # walks, obs_policy_buf, obs_critic_buf, act_buf, state_buf, goal_buf = self.planner.extract_walks(num_walks=100, length=50)
         walks, obs_policy_buf, obs_critic_buf, act_buf, state_buf, goal_buf = self.planner.perform_search(
-            critic=self.critic_target, num_searches=100, length=50, search_for_planner=False)
+            critic=self.critic_target,
+            num_searches=100,
+            length=50,
+            search_for_planner=False
+        )
 
-        reward_sum_buf, env_not_done_buf, obs_policy_prime_buf, obs_critic_prime_buf = self.step_sampled_actions(act_buf, state_buf, goal_buf)
+        (
+            reward_sum_buf,
+            env_not_done_buf,
+            obs_policy_prime_buf,
+            obs_critic_prime_buf
+        ) = self.step_sampled_actions(act_buf, state_buf, goal_buf)
 
         # Add data to the replay buffer
         self.replay_buffer.store(
@@ -352,7 +366,13 @@ class DiffusionRoadmap:
             obs_critic_prime_buf
         )
 
+        # obs_policy_demo, obs_critic_demo, act_demo, _ = self.planner.extract_demos(num_demos=50, max_len=20, num_parents=3)
+        # self.bc_replay_buffer.store(obs_policy_demo, act_demo)
+
         self.data_collect_time += time.time() - _t
+
+        # Restore the on policy context
+        self.obs = self.env.restore_episode_context(ep_ctxt)
 
         # Train with the extracted walks
         _t = time.time()
