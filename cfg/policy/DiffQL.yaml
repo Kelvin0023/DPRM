@@ -6,7 +6,7 @@ trainer:
   num_mini_batches: 4
 
   # value normalization or scaling
-  normalize_value: False
+  normalize_value: True
   value_scale: 1.0
 
   # grad clipping

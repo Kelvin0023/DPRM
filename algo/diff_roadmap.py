@@ -49,7 +49,7 @@ class DiffusionRoadmap:
         #     device=self.device,
         # )
         self.replay_buffer = ReplayBuffer(
-            buffer_size=10000,
+            buffer_size=100000,
             batch_size=self.cfg["policy"]["trainer"]["batch_size"],
             device=self.device,
         )
@@ -66,7 +66,7 @@ class DiffusionRoadmap:
             chunk_size=self.chunk_size,
             device=self.device,
             beta_schedule="cosine",
-            num_timesteps=20,
+            num_timesteps=50,
         ).to(self.device)
 
         # create Diffusion Critic
