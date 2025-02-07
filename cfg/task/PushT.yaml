@@ -29,5 +29,5 @@ valid_robot_object_thres: 1.0
 height_limit: 0.1505
 
 # PD controller
-kp: 5
-kd: 2
+kp: 3
+kd: 1

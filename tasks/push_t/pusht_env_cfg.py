@@ -140,8 +140,8 @@ class PushTEnvCfg(DirectRLEnvCfg):
     obj_vel_upper_limit = [1.0, 1.0]
 
     # PD controller setting
-    kp = 5
-    kd = 2
+    kp = 3
+    kd = 1
 
     # reward and termination
     reward_type = "sparse"  # sparse, dense, or mixed

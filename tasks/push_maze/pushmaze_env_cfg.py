@@ -125,8 +125,8 @@ class PushMazeEnvCfg(DirectRLEnvCfg):
     dof_vel_upper_limit = [1.0, 1.0]
 
     # PD controller setting
-    kp = 5
-    kd = 2
+    kp = 2
+    kd = 1
 
     # reward and success criteria
     reward_type = "sparse"  # dense, sparse or mixed
