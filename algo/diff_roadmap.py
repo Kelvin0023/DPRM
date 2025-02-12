@@ -159,7 +159,7 @@ class DiffusionRoadmap:
         # ---- Training ----
         self.obs = None
         self.epoch_num = 0
-        self.current_rewards = torch.zeros((self.num_envs, 1), dtype=torch.float32, device=self.device)
+        self.current_rewards = torch.zeros((self.num_envs,), dtype=torch.float32, device=self.device)
         self.current_lengths = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
         self.eval_current_rewards = torch.zeros((self.num_envs, 1), dtype=torch.float32, device=self.device)
         self.eval_current_lengths = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
@@ -467,8 +467,8 @@ class DiffusionRoadmap:
         with (torch.inference_mode()):
 
             # flag to check if the environment is done
-            env_done = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)  # terminate or timeout
-            env_rewsum = torch.zeros((self.num_envs, 1), dtype=torch.float32, device=self.device)  # sum of rewards
+            env_done = torch.zeros((self.num_envs,), dtype=torch.bool, device=self.device)  # terminate or timeout
+            env_rewsum = torch.zeros((self.num_envs,), dtype=torch.float32, device=self.device)  # sum of rewards
 
             for n in range(self.chunk_size):
                 obs_policy = self.obs["policy"]
@@ -488,12 +488,11 @@ class DiffusionRoadmap:
                 env_done = torch.logical_or(env_done, torch.logical_or(self.dones, timeouts))
 
                 # update the current rewards and lengths
-                rewards = rewards.unsqueeze(1)
                 self.current_rewards += rewards
                 self.current_lengths += 1
 
                 # update the sum of rewards
-                env_not_done = 1.0 - env_done.float().unsqueeze(1)
+                env_not_done = 1.0 - env_done.float()
                 env_rewsum += (self.gamma ** n) * env_not_done * rewards
 
                 # reset the environment after stepping an action chunk
@@ -513,7 +512,7 @@ class DiffusionRoadmap:
                     self.episode_rewards.update(self.current_rewards[done_indices])
                     self.episode_lengths.update(self.current_lengths[done_indices])
                     self.current_rewards = self.current_rewards * env_not_done
-                    self.current_lengths = self.current_lengths * env_not_done.squeeze()
+                    self.current_lengths = self.current_lengths * env_not_done
 
                 self.extra_info = {}
                 for k, v in infos.items():
