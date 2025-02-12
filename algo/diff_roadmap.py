@@ -43,13 +43,13 @@ class DiffusionRoadmap:
         self.value_rms = RunningMeanStd((1,)).to(self.device)
 
         # ---- Replay Buffer ----
-        # self.bc_replay_buffer = BCReplayBuffer(
-        #     buffer_size=10000,
-        #     batch_size=self.cfg["policy"]["trainer"]["batch_size"],
-        #     device=self.device,
-        # )
-        self.replay_buffer = ReplayBuffer(
+        self.bc_replay_buffer = BCReplayBuffer(
             buffer_size=100000,
+            batch_size=self.cfg["policy"]["trainer"]["batch_size"],
+            device=self.device,
+        )
+        self.replay_buffer = ReplayBuffer(
+            buffer_size=1000000,
             batch_size=self.cfg["policy"]["trainer"]["batch_size"],
             device=self.device,
         )
@@ -99,7 +99,7 @@ class DiffusionRoadmap:
             cfg=model_trainer_cfg,
             env=self.env,
             replay_buffer=self.replay_buffer,
-            bc_replay_buffer=None,
+            bc_replay_buffer=self.bc_replay_buffer,
             actor=self.actor,
             actor_target=self.actor_target,
             critic=self.critic,
@@ -365,7 +365,7 @@ class DiffusionRoadmap:
         obs_policy_prime_buf = obs_policy_prime_buf[:, 0, :]
         obs_critic_prime_buf = obs_critic_prime_buf[:, 0, :]
 
-        # Add data to the replay buffer
+        # Update the replay buffer for behavioral cloning with the extracted walks
         self.replay_buffer.store(
             obs_policy_buf,
             obs_critic_buf,
@@ -375,9 +375,20 @@ class DiffusionRoadmap:
             obs_policy_prime_buf,
             obs_critic_prime_buf
         )
+        self.bc_replay_buffer.store(obs_policy_buf, act_buf)
 
-        # obs_policy_demo, obs_critic_demo, act_demo, _ = self.planner.extract_demos(num_demos=50, max_len=20, num_parents=3)
-        # self.bc_replay_buffer.store(obs_policy_demo, act_demo)
+        # Collect on-policy data
+        obs_policy, obs_critic, act_chunk, rewsum, env_not_done, obs_policy_prime, obs_critic_prime = self.play_steps()
+        # Add on-policy data to the replay buffer
+        self.replay_buffer.store(
+            obs_policy,
+            obs_critic,
+            act_chunk,
+            rewsum,
+            env_not_done,
+            obs_policy_prime,
+            obs_critic_prime
+        )
 
         self.data_collect_time += time.time() - _t
 
@@ -444,6 +455,73 @@ class DiffusionRoadmap:
 
         wandb.log({"agent_steps": self.agent_steps}, step=self.epoch_num)
 
+    def play_steps(self, reset_dist_type="train"):
+        self.env.set_reset_dist_type(reset_dist_type)
+        self.env.success_rate_mode = "train"
+
+        # randomly pick states in the graph to serve as the reset states
+        select_idx = torch.randint(0, self.planner.prm_q.shape[0], (1024,))
+        reset_states = self.planner.prm_q[select_idx]
+        self.env.set_reset_state_buf(reset_states)
+
+        with (torch.inference_mode()):
+
+            # flag to check if the environment is done
+            env_done = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)  # terminate or timeout
+            env_rewsum = torch.zeros((self.num_envs, 1), dtype=torch.float32, device=self.device)  # sum of rewards
+
+            for n in range(self.chunk_size):
+                obs_policy = self.obs["policy"]
+                obs_critic = self.obs["critic"]
+
+                processed_obs = self.obs_policy_rms(obs_policy)
+                # sample a chunk of actions
+                if n % self.chunk_size == 0:
+                    pred_act_chunk = self.actor_target.sample_action_chunks(processed_obs)
+
+                next_action = pred_act_chunk[:, n % self.chunk_size, :]
+                next_action = torch.clamp(next_action, -1.0, 1.0)
+
+                self.obs, rewards, self.dones, timeouts, infos = self.env.step_without_reset(next_action)
+
+                # update the environment done flag
+                env_done = torch.logical_or(env_done, torch.logical_or(self.dones, timeouts))
+
+                # update the current rewards and lengths
+                rewards = rewards.unsqueeze(1)
+                self.current_rewards += rewards
+                self.current_lengths += 1
+
+                # update the sum of rewards
+                env_not_done = 1.0 - env_done.float().unsqueeze(1)
+                env_rewsum += (self.gamma ** n) * env_not_done * rewards
+
+                # reset the environment after stepping an action chunk
+                if n % self.chunk_size == self.chunk_size - 1:
+                    # get the next observation after stepping the action chunk
+                    obs_policy_prime = self.obs["policy"]
+                    obs_critic_prime = self.obs["critic"]
+
+                    # fetch the environment idx that are done
+                    done_indices = env_done.nonzero(as_tuple=False).flatten()
+                    # reset the environment that are done or timeout
+                    if len(done_indices) > 0:
+                        self.env.reset_idx(done_indices)
+                        self.obs = self.env.get_observations()
+
+                    # update the evaluation metrics
+                    self.episode_rewards.update(self.current_rewards[done_indices])
+                    self.episode_lengths.update(self.current_lengths[done_indices])
+                    self.current_rewards = self.current_rewards * env_not_done
+                    self.current_lengths = self.current_lengths * env_not_done.squeeze()
+
+                self.extra_info = {}
+                for k, v in infos.items():
+                    # only log scalars
+                    if isinstance(v, float) or isinstance(v, int) or (isinstance(v, torch.Tensor) and len(v.shape) == 0):
+                        self.extra_info[k] = v
+
+        return obs_policy, obs_critic, pred_act_chunk, env_rewsum, env_not_done, obs_policy_prime, obs_critic_prime
 
     def eval_steps(self):
         self.set_eval()
