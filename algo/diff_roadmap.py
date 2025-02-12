@@ -43,13 +43,13 @@ class DiffusionRoadmap:
         self.value_rms = RunningMeanStd((1,)).to(self.device)
 
         # ---- Replay Buffer ----
-        self.bc_replay_buffer = BCReplayBuffer(
-            buffer_size=100000,
-            batch_size=self.cfg["policy"]["trainer"]["batch_size"],
-            device=self.device,
-        )
+        # self.bc_replay_buffer = BCReplayBuffer(
+        #     buffer_size=100000,
+        #     batch_size=self.cfg["policy"]["trainer"]["batch_size"],
+        #     device=self.device,
+        # )
         self.replay_buffer = ReplayBuffer(
-            buffer_size=1000000,
+            buffer_size=100000,
             batch_size=self.cfg["policy"]["trainer"]["batch_size"],
             device=self.device,
         )
@@ -99,7 +99,7 @@ class DiffusionRoadmap:
             cfg=model_trainer_cfg,
             env=self.env,
             replay_buffer=self.replay_buffer,
-            bc_replay_buffer=self.bc_replay_buffer,
+            bc_replay_buffer=None,
             actor=self.actor,
             actor_target=self.actor_target,
             critic=self.critic,
@@ -375,20 +375,21 @@ class DiffusionRoadmap:
             obs_policy_prime_buf,
             obs_critic_prime_buf
         )
-        self.bc_replay_buffer.store(obs_policy_buf, act_buf)
 
-        # Collect on-policy data
-        obs_policy, obs_critic, act_chunk, rewsum, env_not_done, obs_policy_prime, obs_critic_prime = self.play_steps()
-        # Add on-policy data to the replay buffer
-        self.replay_buffer.store(
-            obs_policy,
-            obs_critic,
-            act_chunk,
-            rewsum,
-            env_not_done,
-            obs_policy_prime,
-            obs_critic_prime
-        )
+        # self.bc_replay_buffer.store(obs_policy_buf, act_buf)
+
+        # # Collect on-policy data
+        # obs_policy, obs_critic, act_chunk, rewsum, env_not_done, obs_policy_prime, obs_critic_prime = self.play_steps()
+        # # Add on-policy data to the replay buffer
+        # self.replay_buffer.store(
+        #     obs_policy,
+        #     obs_critic,
+        #     act_chunk,
+        #     rewsum,
+        #     env_not_done,
+        #     obs_policy_prime,
+        #     obs_critic_prime
+        # )
 
         self.data_collect_time += time.time() - _t
 

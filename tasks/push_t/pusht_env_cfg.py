@@ -144,10 +144,10 @@ class PushTEnvCfg(DirectRLEnvCfg):
     kd = 1
 
     # reward and termination
-    reward_type = "sparse"  # sparse, dense, or mixed
-    pos_dense_reward_scale = 1.0
-    rot_dense_reward_scale = 1.0
-    success_reward_scale = 10.0  # sparse reward for pushing object to the goal position
+    reward_type = "mixed"  # sparse, dense, or mixed
+    pos_dense_reward_scale = 0.01
+    rot_dense_reward_scale = 0.01
+    success_reward_scale = 1.0  # sparse reward for pushing object to the goal position
 
     success_pos_threshold = 0.1  # distance to goal to consider as success
     success_rot_threshold = 0.3  # rotation to goal to consider as success

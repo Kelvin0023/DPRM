@@ -9,10 +9,10 @@ num_states: 21
 num_q_space: 15
 
 # reward and success threshold
-reward_type: sparse  # sparse, dense, or mixed
-pos_dense_reward_scale: 1.0
-rot_dense_reward_scale: 1.0
-success_reward_scale: 10.0
+reward_type: mixed  # sparse, dense, or mixed
+pos_dense_reward_scale: 0.01
+rot_dense_reward_scale: 0.01
+success_reward_scale: 1.0
 success_pos_threshold: 0.1
 success_rot_threshold: 0.3
 

@@ -108,10 +108,10 @@ class DiffusionQL(object):
                 sampled_obs_critic_prime
             ) = self.replay_buffer.sample()
 
-            (
-                sampled_obs_policy_demo,
-                sampled_act_chunk_demo,
-            ) = self.bc_replay_buffer.sample()
+            # (
+            #     sampled_obs_policy_demo,
+            #     sampled_act_chunk_demo,
+            # ) = self.bc_replay_buffer.sample()
 
             norm_obs_policy = self.obs_policy_rms(sampled_obs_policy)
             norm_obs_critic = self.obs_critic_rms(sampled_obs_critic)
@@ -152,11 +152,11 @@ class DiffusionQL(object):
             self.critic_optimizer.step()
 
             """ Policy Training """
-            # bc_loss = self.policy_loss(sampled_act_chunk, norm_obs_policy)
-            # bc_loss = torch.mean(bc_loss)
-            norm_obs_policy_demo = self.obs_policy_rms(sampled_obs_policy_demo)
-            bc_loss = self.policy_loss(sampled_act_chunk_demo, norm_obs_policy_demo)
+            bc_loss = self.policy_loss(sampled_act_chunk, norm_obs_policy)
             bc_loss = torch.mean(bc_loss)
+            # norm_obs_policy_demo = self.obs_policy_rms(sampled_obs_policy_demo)
+            # bc_loss = self.policy_loss(sampled_act_chunk_demo, norm_obs_policy_demo)
+            # bc_loss = torch.mean(bc_loss)
 
             new_act_chunk = self.diffusion_actor(norm_obs_policy)
             q1_new_action, q2_new_action = self.diffusion_critic(norm_obs_critic, new_act_chunk)
