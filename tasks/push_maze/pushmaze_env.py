@@ -166,6 +166,23 @@ class PushMazeEnv(DirectRLEnv):
 
         return total_reward
 
+    def get_rewards_from_obs(self, obs_policy: torch.Tensor) -> torch.Tensor:
+        """ Compute rewards from the observations. """
+        # Extract object position and goal position from the observations
+        object_pos_xy = obs_policy[:, 4:6]
+        goal = obs_policy[:, -2:]
+        # Compute reward and distance between object and goal positions
+        total_reward, _ = compute_rewards(
+            object_pos_xy,
+            goal,
+            self.cfg.reward_type,
+            self.cfg.dense_reward_scale,
+            self.cfg.success_reward_scale,
+            self.cfg.at_goal_threshold,
+        )
+
+        return total_reward
+
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         """ Compute and return the done flags for the environment.
 
@@ -181,6 +198,10 @@ class PushMazeEnv(DirectRLEnv):
         done = torch.zeros_like(self.reset_buf, dtype=torch.bool)
 
         return done, time_out
+
+    def get_not_dones_from_obs(self, obs_policy: torch.Tensor) -> torch.Tensor:
+        """ Compute the done flags for the state in the PRM walks. """
+        return torch.ones((obs_policy.size(0),), dtype=torch.int, device=self.device)
 
     def _reset_idx(self, env_ids: torch.Tensor | None) -> None:
         """ Reset environments based on specified indices.

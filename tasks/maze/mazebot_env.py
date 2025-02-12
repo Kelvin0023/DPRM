@@ -147,6 +147,24 @@ class MazeBotEnv(DirectRLEnv):
 
         return total_reward
 
+    def get_rewards_from_obs(self, obs_policy: torch.Tensor) -> torch.Tensor:
+        """ Compute the reward for the state in the PRM walks.
+
+        obs_policy[:, 0:2]: joint position
+        obs_policy[:, 2:4]: joint velocity
+        obs_policy[:, 4:6]: goal position
+        """
+
+        total_reward, _ = compute_rewards(
+            obs_policy[:, 0:2],  # joint position
+            obs_policy[:, 4:6],  # goal position
+            self.cfg.reward_type,
+            self.cfg.dense_reward_scale,
+            self.cfg.success_reward_scale,
+            self.cfg.at_goal_threshold,
+        )
+        return total_reward
+
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         """ Compute and return the done flags for the environment.
 
@@ -157,6 +175,10 @@ class MazeBotEnv(DirectRLEnv):
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         done = torch.zeros_like(self.reset_buf, dtype=torch.bool)
         return done, time_out
+
+    def get_not_dones_from_obs(self, obs_policy: torch.Tensor) -> torch.Tensor:
+        """ Compute the done flags for the state in the PRM walks. """
+        return torch.ones((obs_policy.size(0),), dtype=torch.int, device=self.device)
 
     def compute_reward_in_walks(self, expand_state) -> torch.Tensor:
         """

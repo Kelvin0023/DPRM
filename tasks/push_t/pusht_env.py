@@ -177,6 +177,44 @@ class PushTEnv(DirectRLEnv):
 
         return total_reward
 
+    def get_rewards_from_obs(self, obs_policy: torch.Tensor) -> torch.Tensor:
+        """ Compute rewards from the observations. """
+        object_pos_xy = obs_policy[:, 4:6]
+        object_rotation = obs_policy[:, 6:10]
+        goal_pos_xy = obs_policy[:, 15:17]
+        goal_rot = obs_policy[:, 17:21]
+
+        # position distance to goal
+        pos_dist = torch.linalg.norm(object_pos_xy - goal_pos_xy, dim=1)
+        reward_pos = -1.0 * pos_dist * self.cfg.pos_dense_reward_scale
+
+        # rotation difference to goal
+        rot_diff = compute_quat_angle(object_rotation, goal_rot).squeeze()
+        reward_rot = -1.0 * rot_diff * self.cfg.rot_dense_reward_scale
+
+        # Task success reward
+        # position check
+        pos_diff = torch.linalg.norm(object_pos_xy - goal_pos_xy, dim=1)
+        success_pos = pos_diff < self.cfg.success_pos_threshold
+        # orientation check
+        rot_diff = compute_quat_angle(object_rotation, goal_rot).squeeze()
+        success_rot = rot_diff < self.cfg.success_rot_threshold
+        # combine position and orientation check
+        success = torch.logical_and(success_pos, success_rot)
+        # compute success reward
+        reward_success = success.float() * self.cfg.success_reward_scale
+
+        if self.cfg.reward_type == "sparse":
+            total_reward = reward_success
+        elif self.cfg.reward_type == "dense":
+            total_reward = reward_pos + reward_rot
+        elif self.cfg.reward_type == "mixed":
+            total_reward = reward_pos + reward_rot + reward_success
+        else:
+            raise ValueError(f"Invalid reward type: {self.cfg.reward_type}")
+
+        return total_reward
+
     def check_success(self) -> torch.Tensor:
         """ Check if the environment has reached the goal position.
 
@@ -205,6 +243,10 @@ class PushTEnv(DirectRLEnv):
         done = torch.zeros_like(self.reset_buf, dtype=torch.bool)
 
         return done, time_out
+
+    def get_not_dones_from_obs(self, obs_policy: torch.Tensor) -> torch.Tensor:
+        """ Compute the done flags for the state in the PRM walks. """
+        return torch.ones((obs_policy.size(0),), dtype=torch.int, device=self.device)
 
     def _reset_idx(self, env_ids: torch.Tensor | None) -> None:
         """ Reset environments based on specified indices.

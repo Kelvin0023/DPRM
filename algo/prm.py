@@ -651,7 +651,15 @@ class PRM:
             act_buf[~zero_children_mask, step, :, :] = sampled_act
 
         if search_for_planner or hasattr(self.env, "goal"):
-            updated_obs_policy_buf, updated_obs_critic_buf, updated_act_buf, updated_state_buf, updated_goal_buf = self.create_replay_buffer(
+            (
+                updated_obs_policy_buf,
+                updated_obs_critic_buf,
+                updated_obs_policy_prime_buf,
+                updated_obs_critic_prime_buf,
+                updated_act_buf,
+                updated_state_buf,
+                updated_goal_buf
+            )= self.create_replay_buffer(
                 obs_policy_buf,
                 obs_critic_buf,
                 act_buf,
@@ -660,7 +668,15 @@ class PRM:
                 search_for_planner=search_for_planner
             )
         else:
-            updated_obs_policy_buf, updated_obs_critic_buf, updated_act_buf, updated_state_buf, updated_goal_buf = self.create_replay_buffer(
+            (
+                updated_obs_policy_buf,
+                updated_obs_critic_buf,
+                updated_obs_policy_prime_buf,
+                updated_obs_critic_prime_buf,
+                updated_act_buf,
+                updated_state_buf,
+                updated_goal_buf
+            )= self.create_replay_buffer(
                 obs_policy_buf,
                 obs_critic_buf,
                 act_buf,
@@ -671,12 +687,23 @@ class PRM:
         print("Buffer sizes in the searches: ",
               updated_obs_policy_buf.size(),
               updated_obs_critic_buf.size(),
+              updated_obs_policy_prime_buf.size(),
+              updated_obs_critic_prime_buf.size(),
               updated_act_buf.size(),
               updated_state_buf.size(),
               updated_goal_buf.size() if search_for_planner or hasattr(self.env, "goal") else None
               )
 
-        return search, updated_obs_policy_buf, updated_obs_critic_buf, updated_act_buf, updated_state_buf, updated_goal_buf
+        return (
+            search,
+            updated_obs_policy_buf,
+            updated_obs_critic_buf,
+            updated_obs_policy_prime_buf,
+            updated_obs_critic_prime_buf,
+            updated_act_buf,
+            updated_state_buf,
+            updated_goal_buf
+        )
 
     def find_next_node(
             self,
@@ -770,44 +797,61 @@ class PRM:
         total_dist_in_goal = 0.0
 
         # Initialize the empty tensor to hold the observation-action pairs
-        updated_obs_policy_buf = torch.empty((0, self.env.cfg.num_observations))
-        updated_obs_critic_buf = torch.empty((0, self.env.cfg.num_states))
+        updated_obs_policy_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_observations))
+        updated_obs_critic_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_states))
+        updated_obs_policy_prime_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_observations))
+        updated_obs_critic_prime_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_states))
         updated_act_chunk_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
         updated_state_buf = torch.empty((0, self.prm_q.size(1)))
         if search_for_planner or hasattr(self.env, "goal"):
-            updated_goal_buf = torch.empty((0, goal_size))
+            updated_goal_buf = torch.empty((0, self.prm_rollout_len, goal_size))
 
         # Find the last valid indices in obs_policy_buf that is not padded with float('-inf')
         last_valid_idx = find_last_valid_indices(obs_policy_buf)
         for search in range(obs_policy_buf.size(0)):
             # Only process the walk if there are valid observations
             if last_valid_idx[search] >= 0:
-                valid_obs_policy = obs_policy_buf[search, :last_valid_idx[search] + 1, 0, :]
-                valid_obs_critic = obs_critic_buf[search, :last_valid_idx[search] + 1, 0, :]
+                valid_obs_policy = obs_policy_buf[search, :last_valid_idx[search] + 1, :, :]
+                valid_obs_critic = obs_critic_buf[search, :last_valid_idx[search] + 1, :, :]
                 valid_act_chunk = act_buf[search, :last_valid_idx[search] + 1, :, :]
                 valid_state = state_buf[search, :last_valid_idx[search] + 1, :]
                 if search_for_planner:
                     # Add goal to the goal buffer
                     if update_goal:
-                        new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end].repeat(
-                            valid_obs_policy.size(0), 1).cpu()
+                        new_goal = valid_obs_policy[-1, 0, policy_extracted_goal_start: policy_extracted_goal_end].repeat(
+                            valid_obs_policy.size(0), self.prm_rollout_len, 1).cpu()
                     else:
-                        new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), 1).cpu()
+                        new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), self.prm_rollout_len, 1).cpu()
                     updated_goal_buf = torch.cat((updated_goal_buf, new_goal), dim=0)
                 elif hasattr(self.env, "goal"):
                     # Add goal to the goal buffer
                     if update_goal:
-                        new_goal = valid_obs_policy[-1, policy_extracted_goal_start: policy_extracted_goal_end].repeat(
-                            valid_obs_policy.size(0), 1).cpu()
+                        new_goal = valid_obs_policy[-1, 0, policy_extracted_goal_start: policy_extracted_goal_end].repeat(
+                            valid_obs_policy.size(0), self.prm_rollout_len, 1).cpu()
                     else:
-                        new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), 1).cpu()
+                        new_goal = goal_buf[search].unsqueeze(0).repeat(valid_obs_policy.size(0), self.prm_rollout_len, 1).cpu()
                     updated_goal_buf = torch.cat((updated_goal_buf, new_goal), dim=0)
                     # Update the goal in the valid observations
-                    valid_obs_policy[:, policy_goal_start: policy_goal_end] = new_goal
-                    valid_obs_critic[:, critic_goal_start: critic_goal_end] = new_goal
+                    valid_obs_policy[:, :, policy_goal_start: policy_goal_end] = new_goal
+                    valid_obs_critic[:, :, critic_goal_start: critic_goal_end] = new_goal
+
+                # Compute the next obs_policy and obs_critic
+                valid_obs_policy = valid_obs_policy.view(-1, self.prm_rollout_len, self.env.cfg.num_observations)
+                valid_obs_critic = valid_obs_critic.view(-1, self.prm_rollout_len, self.env.cfg.num_states)
+                valid_act_chunk = valid_act_chunk.view(-1, self.prm_rollout_len, self.env.cfg.num_actions)
+                valid_obs_policy_prime = valid_obs_policy[1:]
+                valid_obs_critic_prime = valid_obs_critic[1:]
+
+                # Remove the last observation-action pair
+                valid_obs_policy = valid_obs_policy[:-1]
+                valid_obs_critic = valid_obs_critic[:-1]
+                valid_act_chunk = valid_act_chunk[:-1]
+
                 # Append the valid observations to the updated buffer
                 updated_obs_policy_buf = torch.cat((updated_obs_policy_buf, valid_obs_policy), dim=0)
                 updated_obs_critic_buf = torch.cat((updated_obs_critic_buf, valid_obs_critic), dim=0)
+                updated_obs_policy_prime_buf = torch.cat((updated_obs_policy_prime_buf, valid_obs_policy_prime), dim=0)
+                updated_obs_critic_prime_buf = torch.cat((updated_obs_critic_prime_buf, valid_obs_critic_prime), dim=0)
                 # Append the valid q to the updated buffer
                 updated_state_buf = torch.cat((updated_state_buf, valid_state), dim=0)
                 # Append the valid actions to the updated buffer
@@ -821,7 +865,7 @@ class PRM:
                 total_dist_in_goal += goal_dist_in_walk
 
         assert (updated_obs_policy_buf.size(0) == updated_act_chunk_buf.size(0) == updated_obs_critic_buf.size(0) ==
-                updated_state_buf.size(0)), \
+                updated_obs_policy_prime_buf.size(0) == updated_obs_critic_prime_buf.size(0)), \
             "Observations and actions should have the same length"
 
         print("Average goal distance in the walks: ", total_dist_in_goal / valid_walk_num)
@@ -830,6 +874,8 @@ class PRM:
             return (
                 updated_obs_policy_buf.to(self.device),
                 updated_obs_critic_buf.to(self.device),
+                updated_obs_policy_prime_buf.to(self.device),
+                updated_obs_critic_prime_buf.to(self.device),
                 updated_act_chunk_buf.to(self.device),
                 updated_state_buf.to(self.device),
                 updated_goal_buf.to(self.device)
@@ -838,6 +884,8 @@ class PRM:
             return (
                 updated_obs_policy_buf.to(self.device),
                 updated_obs_critic_buf.to(self.device),
+                updated_obs_policy_prime_buf.to(self.device),
+                updated_obs_critic_prime_buf.to(self.device),
                 updated_act_chunk_buf.to(self.device),
                 updated_state_buf.to(self.device),
                 None

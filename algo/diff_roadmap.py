@@ -341,19 +341,29 @@ class DiffusionRoadmap:
         # Extracted walks w.r.t the task critic
         self.env.reset_dist_type = "train"
         # walks, obs_policy_buf, obs_critic_buf, act_buf, state_buf, goal_buf = self.planner.extract_walks(num_walks=100, length=50)
-        walks, obs_policy_buf, obs_critic_buf, act_buf, state_buf, goal_buf = self.planner.perform_search(
+        (
+            _,
+            obs_policy_buf,
+            obs_critic_buf,
+            obs_policy_prime_buf,
+            obs_critic_prime_buf,
+            act_buf,
+            *_
+        )= self.planner.perform_search(
             critic=self.critic_target,
             num_searches=100,
             length=50,
             search_for_planner=False
         )
 
-        (
-            reward_sum_buf,
-            env_not_done_buf,
-            obs_policy_prime_buf,
-            obs_critic_prime_buf
-        ) = self.step_sampled_actions(act_buf, state_buf, goal_buf)
+        # Compute the reward and done tensor
+        reward_sum_buf, env_not_done_buf = self.get_reward_and_done(obs_policy_buf)
+
+        # Remove the rollout_len dimension from the obs buffer
+        obs_policy_buf = obs_policy_buf[:, 0, :]
+        obs_critic_buf = obs_critic_buf[:, 0, :]
+        obs_policy_prime_buf = obs_policy_prime_buf[:, 0, :]
+        obs_critic_prime_buf = obs_critic_prime_buf[:, 0, :]
 
         # Add data to the replay buffer
         self.replay_buffer.store(
@@ -385,87 +395,21 @@ class DiffusionRoadmap:
 
         return metric
 
-    def step_sampled_actions(self, act_buf, state_buf, goal_buf):
-        step_loop_num = state_buf.size(0) // self.env.num_envs
-        if state_buf.size(0) % self.env.num_envs != 0:
-            step_loop_num += 1
-
+    def get_reward_and_done(self, obs_policy_buf):
         # Initialize the reward sum and not done tensor
-        reward_sum = torch.zeros((state_buf.size(0),), device=self.device)
-        env_not_dones = torch.ones((state_buf.size(0),), dtype=torch.int, device=self.device)
-        obs_policy_prim = torch.empty((0, self.obs_policy_dim), device=self.device)
-        obs_critic_prim = torch.empty((0, self.obs_critic_dim), device=self.device)
+        reward_sum = torch.zeros((obs_policy_buf.size(0),), device=self.device)
+        env_not_dones = torch.ones((obs_policy_buf.size(0),), dtype=torch.int, device=self.device)
 
-        for loop in range(step_loop_num):
-            if loop == step_loop_num - 1 and state_buf.size(0) % self.env.num_envs != 0:
-                start_idx = loop * self.env.num_envs
-                end_idx = state_buf.size(0)
-            else:
-                start_idx = loop * self.env.num_envs
-                end_idx = (loop + 1) * self.env.num_envs
+        # Compute the reward and done tensor on each time step
+        for i in range(self.chunk_size):
+            reward = self.env.get_rewards_from_obs(obs_policy_buf[:, i, :])
+            env_not_done = self.env.get_not_dones_from_obs(obs_policy_buf[:, i, :])
 
+            # Update the reward sum and not done tensor
+            reward_sum += (self.gamma ** i) * env_not_dones * reward
+            env_not_dones = torch.logical_and(env_not_dones, env_not_done)
 
-            selected_state_buf = state_buf[start_idx:end_idx]
-            selected_act_buf = act_buf[start_idx:end_idx]
-            if hasattr(self.env, "goal"):
-                selected_goal_buf = goal_buf[start_idx:end_idx]
-
-            selected_reward_sum = torch.zeros((end_idx - start_idx,), device=self.device)
-            selected_env_not_dones = torch.ones((end_idx - start_idx,), dtype=torch.int, device=self.device)
-
-            # environment index that are used to step the actions
-            used_env_idx = torch.tensor(list(range(end_idx - start_idx)))
-
-            with torch.inference_mode():
-                self.env.set_env_states(selected_state_buf, used_env_idx.to(self.device))
-                if hasattr(self.env, "goal"):
-                    # Set the goal for the environment
-                    self.env.set_goal(selected_goal_buf, used_env_idx)
-
-                # Reset the environment buffer
-                self.env.reset_buf[:] = 0
-                self.env.reset_terminated[:] = 0
-                self.env.reset_time_outs[:] = 0
-                self.env.episode_length_buf[:] = 0
-
-                # Step the environment with sampled actions
-                for j in range(self.chunk_size):
-                    # Step the environment
-                    padded_action = torch.zeros((self.env.num_envs, self.act_dim), device=self.device)
-                    padded_action[used_env_idx, :] = selected_act_buf[:, j]
-                    new_obs_dict, rewards, dones, _, infos = self.env.step_without_reset(padded_action)
-                    not_dones = 1.0 - dones.float()
-                    selected_env_not_dones = torch.logical_and(selected_env_not_dones, not_dones[used_env_idx])
-                    selected_reward_sum += (self.gamma ** j) * selected_env_not_dones * rewards[used_env_idx]
-
-                # Update the reward sum and not done tensor
-                reward_sum[start_idx:end_idx] = selected_reward_sum
-                env_not_dones[start_idx:end_idx] = selected_env_not_dones
-
-                # Get the observation in the next time step
-                selected_obs_policy_prim = new_obs_dict["policy"][used_env_idx, :]
-                obs_policy_prim = torch.cat((obs_policy_prim, selected_obs_policy_prim), dim=0)
-                selected_norm_obs_policy_prim = self.obs_policy_rms(selected_obs_policy_prim)
-                selected_obs_critic_prim = new_obs_dict["critic"][used_env_idx, :]
-                obs_critic_prim = torch.cat((obs_critic_prim, selected_obs_critic_prim), dim=0)
-                selected_norm_obs_critic_prim = self.obs_critic_rms(selected_obs_critic_prim)
-
-                # Update mean and std in the value_rms
-                selected_next_action_chunk = self.actor_target(selected_norm_obs_policy_prim)
-                next_q1, next_q2 = self.critic_target(selected_norm_obs_critic_prim, selected_next_action_chunk)
-                if self.normalize_value:
-                    unnorm_next_q1 = self.value_rms(next_q1, unnorm=True)
-                    unnorm_next_q2 = self.value_rms(next_q2, unnorm=True)
-                    target_q = selected_reward_sum + (self.gamma ** self.chunk_size) * selected_env_not_dones * torch.min(unnorm_next_q1, unnorm_next_q2)
-                    self.value_rms.train()
-                    self.value_rms(target_q)
-                else:
-                    target_q = selected_reward_sum + (self.gamma ** self.chunk_size) * selected_env_not_dones * torch.min(next_q1, next_q2)
-
-        assert obs_policy_prim.size(0) == state_buf.size(0)
-        assert obs_critic_prim.size(0) == state_buf.size(0)
-
-        return reward_sum, env_not_dones, obs_policy_prim, obs_critic_prim
+        return reward_sum, env_not_dones
 
     def update_training_metric(self, eval_mean_rewards, eval_mean_lengths):
         mean_rewards = self.episode_rewards.get_mean()
