@@ -43,7 +43,7 @@ except ValueError as e:
 class EventCfg:
     """Configuration for environment reset and randomization."""
     # reset
-    reset_maze_position = EventTerm(
+    reset_scene_position = EventTerm(
         func=mdp.reset_scene_to_default,
         mode="reset",
     )

@@ -54,7 +54,7 @@ class PushMazeEnv(DirectRLEnv):
         self.kd = self.cfg.kd
 
         # create target joint position to set the actions with PD controller
-        self.target_joint_pos = None
+        self.joint_pos_target = to_torch(self.cfg.default_hand_joint_pos, device=self.device).repeat(self.num_envs, 1)
 
         # create goal position
         self.goal = torch.zeros((self.num_envs, 2), dtype=torch.float, device=self.device)
@@ -467,7 +467,7 @@ class PushMazeEnv(DirectRLEnv):
         object_ang_vel = states[:, 12:15]
 
         # Write the joint state to the simulation
-        self.joint_pos_target = joint_pos
+        self.joint_pos_target[env_ids] = joint_pos
         self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
         # Write object position and velocity to the simulation
