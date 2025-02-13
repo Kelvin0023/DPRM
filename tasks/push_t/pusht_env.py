@@ -44,7 +44,7 @@ class PushTEnv(DirectRLEnv):
         self.kd = self.cfg.kd
 
         # create target joint position to set the actions with PD controller
-        self.joint_pos_target = to_torch(self.cfg.default_hand_joint_pos, device=self.device).repeat(self.num_envs, 1)
+        self.joint_pos_target = torch.zeros((self.num_envs, 2), dtype=torch.float, device=self.device)
 
         # create goal position
         self.goal_pos_xy = torch.zeros((self.num_envs, 2), dtype=torch.float, device=self.device)
