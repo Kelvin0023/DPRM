@@ -12,15 +12,17 @@ except ImportError:
 class PRM:
     """ Prbabilistic Roadmap (PRM) planner for sampling and planning in the task space """
 
-    def __init__(self, cfg, env, actor_target, critic_target, obs_policy_rms, obs_critic_rms, value_rms, device):
+    def __init__(self, cfg, env, buffer, actor_target, critic_target, obs_policy_rms, obs_critic_rms, value_rms, device, gamma):
         self.cfg = cfg
         self.env = env
+        self.replay_buffer = buffer
         self.actor_target = actor_target
         self.critic_target = critic_target
         self.obs_policy_rms = obs_policy_rms
         self.obs_critic_rms = obs_critic_rms
         self.value_rms = value_rms
         self.device = device
+        self.gamma = gamma
 
         # PRM config
         self.prm_samples_per_epoch = cfg["samples_per_epoch"]  # number of samples per epoch
@@ -302,6 +304,11 @@ class PRM:
         with torch.inference_mode():
             # Fetch the obs and states
             obs_dict = self.env.get_observations()
+
+            # Initialize the done flags and reward sums
+            env_done = torch.zeros((self.env.num_envs,), dtype=torch.float, device=self.device)  # terminate or timeout
+            env_rewsum = torch.zeros((self.env.num_envs,), dtype=torch.float32, device=self.device)  # sum of rewards
+
             # Rollout for k steps
             for k in range(self.prm_rollout_len):
                 # Store the initial observation for the critic
@@ -323,8 +330,30 @@ class PRM:
                 self.obs_critic_buf[k] = obs_dict["critic"]
                 self.action_buf[k] = pred_next_act
 
-                # Step the environment
-                obs_dict, *_ = self.env.step_without_reset(pred_next_act)
+                # step the environment
+                obs_dict, rewards, dones, timeouts, infos = self.env.step_without_reset(pred_next_act)
+                # update the environment done flag
+                env_done = torch.logical_or(env_done, dones)
+                # update the sum of rewards
+                env_not_done = 1.0 - env_done.int()
+                env_rewsum += (self.gamma ** k) * env_not_done * rewards
+
+            # fetch the next state and obs
+            next_obs_critic = obs_dict["critic"]
+            next_obs_policy = obs_dict["policy"]
+
+            # update the replay buffer
+            self.replay_buffer.store(
+                self.obs_policy_buf[0, :, :],
+                self.obs_critic_buf[0, :, :],
+                self.action_buf.transpose(0, 1),
+                env_rewsum,
+                env_not_done,
+                next_obs_policy,
+                next_obs_critic
+            )
+
+
 
     def add_nodes(self) -> None:
         """Add nodes based on q-sampled"""

@@ -43,11 +43,11 @@ class DiffusionRoadmap:
         self.value_rms = RunningMeanStd((1,)).to(self.device)
 
         # ---- Replay Buffer ----
-        # self.bc_replay_buffer = BCReplayBuffer(
-        #     buffer_size=100000,
-        #     batch_size=self.cfg["policy"]["trainer"]["batch_size"],
-        #     device=self.device,
-        # )
+        self.bc_replay_buffer = BCReplayBuffer(
+            buffer_size=10000,
+            batch_size=self.cfg["policy"]["trainer"]["batch_size"],
+            device=self.device,
+        )
         self.replay_buffer = ReplayBuffer(
             buffer_size=100000,
             batch_size=self.cfg["policy"]["trainer"]["batch_size"],
@@ -99,7 +99,7 @@ class DiffusionRoadmap:
             cfg=model_trainer_cfg,
             env=self.env,
             replay_buffer=self.replay_buffer,
-            bc_replay_buffer=None,
+            bc_replay_buffer=self.bc_replay_buffer,
             actor=self.actor,
             actor_target=self.actor_target,
             critic=self.critic,
@@ -115,12 +115,14 @@ class DiffusionRoadmap:
         self.planner = hydra.utils.get_class(planner_cfg["_target_"])(
             cfg=planner_cfg,
             env=env,
+            buffer=self.replay_buffer,
             actor_target=self.actor_target,  # use the target task actor for planning
             critic_target=self.critic_target,  # use the target task critic for planning
             obs_policy_rms=self.obs_policy_rms,
             obs_critic_rms=self.obs_critic_rms,
             value_rms=self.value_rms,
             device=self.device,
+            gamma=self.cfg["policy"]["trainer"]["discount"],
         )
 
         # ---- Output Dir ----
@@ -338,43 +340,43 @@ class DiffusionRoadmap:
         # Train the task model
         self.set_eval()
 
-        # Extracted walks w.r.t the task critic
-        self.env.reset_dist_type = "train"
-        # walks, obs_policy_buf, obs_critic_buf, act_buf, state_buf, goal_buf = self.planner.extract_walks(num_walks=100, length=50)
-        (
-            _,
-            obs_policy_buf,
-            obs_critic_buf,
-            obs_policy_prime_buf,
-            obs_critic_prime_buf,
-            act_buf,
-            *_
-        )= self.planner.perform_search(
-            critic=self.critic_target,
-            num_searches=100,
-            length=50,
-            search_for_planner=False
-        )
-
-        # Compute the reward and done tensor
-        reward_sum_buf, env_not_done_buf = self.get_reward_and_done(obs_policy_buf)
-
-        # Remove the rollout_len dimension from the obs buffer
-        obs_policy_buf = obs_policy_buf[:, 0, :]
-        obs_critic_buf = obs_critic_buf[:, 0, :]
-        obs_policy_prime_buf = obs_policy_prime_buf[:, 0, :]
-        obs_critic_prime_buf = obs_critic_prime_buf[:, 0, :]
-
-        # Update the replay buffer for behavioral cloning with the extracted walks
-        self.replay_buffer.store(
-            obs_policy_buf,
-            obs_critic_buf,
-            act_buf,
-            reward_sum_buf,
-            env_not_done_buf,
-            obs_policy_prime_buf,
-            obs_critic_prime_buf
-        )
+        # # Extracted walks w.r.t the task critic
+        # self.env.reset_dist_type = "train"
+        # # walks, obs_policy_buf, obs_critic_buf, act_buf, state_buf, goal_buf = self.planner.extract_walks(num_walks=100, length=50)
+        # (
+        #     _,
+        #     obs_policy_buf,
+        #     obs_critic_buf,
+        #     obs_policy_prime_buf,
+        #     obs_critic_prime_buf,
+        #     act_buf,
+        #     *_
+        # )= self.planner.perform_search(
+        #     critic=self.critic_target,
+        #     num_searches=100,
+        #     length=50,
+        #     search_for_planner=False
+        # )
+        #
+        # # Compute the reward and done tensor
+        # reward_sum_buf, env_not_done_buf = self.get_reward_and_done(obs_policy_buf)
+        #
+        # # Remove the rollout_len dimension from the obs buffer
+        # obs_policy_buf = obs_policy_buf[:, 0, :]
+        # obs_critic_buf = obs_critic_buf[:, 0, :]
+        # obs_policy_prime_buf = obs_policy_prime_buf[:, 0, :]
+        # obs_critic_prime_buf = obs_critic_prime_buf[:, 0, :]
+        #
+        # # Update the replay buffer for behavioral cloning with the extracted walks
+        # self.replay_buffer.store(
+        #     obs_policy_buf,
+        #     obs_critic_buf,
+        #     act_buf,
+        #     reward_sum_buf,
+        #     env_not_done_buf,
+        #     obs_policy_prime_buf,
+        #     obs_critic_prime_buf
+        # )
 
         # self.bc_replay_buffer.store(obs_policy_buf, act_buf)
 
@@ -390,6 +392,9 @@ class DiffusionRoadmap:
         #     obs_policy_prime,
         #     obs_critic_prime
         # )
+
+        obs_policy_demo, obs_critic_demo, act_demo, _ = self.planner.extract_demos(num_demos=50, max_len=30, num_parents=3)
+        self.bc_replay_buffer.store(obs_policy_demo, act_demo)
 
         self.data_collect_time += time.time() - _t
 
