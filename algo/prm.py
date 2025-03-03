@@ -1115,8 +1115,10 @@ class PRM:
                 self.device), sampled_state.to(self.device), None
 
     def extract_demos(self, num_demos: int = 2, max_len: int = 10, num_parents: int = 5):
-        obs_policy_buf = torch.empty((0, self.env.cfg.num_observations))
-        obs_critic_buf = torch.empty((0, self.env.cfg.num_states))
+        obs_policy_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_observations))
+        obs_critic_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_states))
+        obs_policy_prime_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_observations))
+        obs_critic_prime_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_states))
         act_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
         goal_buf = torch.empty((0, self.env.planner_goal_dim))
 
@@ -1125,17 +1127,19 @@ class PRM:
 
             if results is not None:
                 extracted_obs_policy, extracted_obs_critic, extracted_act, extracted_goal = results
-                obs_policy_buf = torch.cat((obs_policy_buf, extracted_obs_policy), dim=0)
-                obs_critic_buf = torch.cat((obs_critic_buf, extracted_obs_critic), dim=0)
+                obs_policy_buf = torch.cat((obs_policy_buf, extracted_obs_policy[:-1]), dim=0)
+                obs_critic_buf = torch.cat((obs_critic_buf, extracted_obs_critic[:-1]), dim=0)
+                obs_policy_prime_buf = torch.cat((obs_policy_prime_buf, extracted_obs_critic[:-1]), dim=0)
+                obs_critic_prime_buf = torch.cat((obs_critic_prime_buf, extracted_obs_critic[:-1]), dim=0)
                 act_buf = torch.cat((act_buf, extracted_act), dim=0)
                 goal_buf = torch.cat((goal_buf, extracted_goal), dim=0)
 
         print("***Buffer sizes in the demos: ", obs_policy_buf.size(0), "***")
-        return obs_policy_buf, obs_critic_buf, act_buf, goal_buf
+        return obs_policy_buf, obs_critic_buf, obs_policy_prime_buf, obs_critic_prime_buf, act_buf, goal_buf
 
     def extract_one_demo(self, max_len, num_parents):
-        obs_policy_buf = torch.empty((0, self.env.cfg.num_observations))
-        obs_critic_buf = torch.empty((0, self.env.cfg.num_states))
+        obs_policy_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_observations))
+        obs_critic_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_states))
         act_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
 
         # Sample a random node in PRM that serves as goal
@@ -1250,8 +1254,14 @@ class PRM:
                 dist_list = next_dist_list
 
         # Update the obs buffers with the new goal
-        obs_policy_buf[:, policy_goal_start:policy_goal_end] = new_goal
-        obs_critic_buf[:, critic_goal_start:critic_goal_end] = new_goal
+        obs_policy_buf[:, :, policy_goal_start:policy_goal_end] = new_goal.repeat(obs_policy_buf.size(0), self.prm_rollout_len, 1)
+        obs_critic_buf[:, :,  critic_goal_start:critic_goal_end] = new_goal.repeat(obs_critic_buf.size(0), self.prm_rollout_len, 1)
+
+        # Get goal obs and state
+        goal_obs_policy = self.prm_obs_policy_buf[goal_node_idx, 0, :, :]
+        goal_obs_critic = self.prm_obs_critic_buf[goal_node_idx, 0, :, :]
+        obs_policy_buf = torch.cat((obs_policy_buf, goal_obs_policy.unsqueeze(0)), dim=0)
+        obs_critic_buf = torch.cat((obs_critic_buf, goal_obs_critic.unsqueeze(0)), dim=0)
 
         # Create goal buffer
         goal_buf = new_goal.repeat(obs_policy_buf.size(0), 1)
@@ -1283,8 +1293,8 @@ class PRM:
         return parents_idx, top_parents_dist
 
     def find_stored_data(self, child_node_idx, parent_node_idx_list):
-        obs_policy_buf = torch.empty((0, self.env.cfg.num_observations))
-        obs_critic_buf = torch.empty((0, self.env.cfg.num_states))
+        obs_policy_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_observations))
+        obs_critic_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_states))
         act_buf = torch.empty((0, self.prm_rollout_len, self.env.cfg.num_actions))
 
         # Find the index of node_idx in each child list of the parents
@@ -1294,11 +1304,11 @@ class PRM:
             child_idx = torch.nonzero(child_list == child_node_idx, as_tuple=False)[0].item()
             # Extract the obs and action chunks
             obs_policy_buf = torch.cat(
-                (obs_policy_buf, self.prm_obs_policy_buf[parent_node_idx_list[i], child_idx, 0, :].unsqueeze(0)),
+                (obs_policy_buf, self.prm_obs_policy_buf[parent_node_idx_list[i], child_idx, :, :].unsqueeze(0)),
                 dim=0
             )
             obs_critic_buf = torch.cat(
-                (obs_critic_buf, self.prm_obs_critic_buf[parent_node_idx_list[i], child_idx, 0, :].unsqueeze(0)),
+                (obs_critic_buf, self.prm_obs_critic_buf[parent_node_idx_list[i], child_idx, :, :].unsqueeze(0)),
                 dim=0
             )
             act_buf = torch.cat(

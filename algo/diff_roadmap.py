@@ -393,7 +393,31 @@ class DiffusionRoadmap:
         #     obs_critic_prime
         # )
 
-        obs_policy_demo, obs_critic_demo, act_demo, _ = self.planner.extract_demos(num_demos=50, max_len=30, num_parents=3)
+        obs_policy_demo, obs_critic_demo, obs_policy_prime_demo, obs_critic_prime_demo, act_demo, _ \
+            = self.planner.extract_demos(
+                num_demos=50,
+                max_len=30,
+                num_parents=3
+            )
+        # Compute the reward and done tensor
+        reward_sum_demo, env_not_done_demo = self.get_reward_and_done(obs_policy_demo.to(self.device))
+
+        # Remove the rollout_len dimension from the obs buffer
+        obs_policy_demo = obs_policy_demo[:, 0, :]
+        obs_critic_demo = obs_critic_demo[:, 0, :]
+        obs_policy_prime_demo = obs_policy_prime_demo[:, 0, :]
+        obs_critic_prime_demo = obs_critic_prime_demo[:, 0, :]
+
+        # Update the replay buffer for behavioral cloning with the extracted walks
+        self.replay_buffer.store(
+            obs_policy_demo,
+            obs_critic_demo,
+            act_demo,
+            reward_sum_demo,
+            env_not_done_demo,
+            obs_policy_prime_demo,
+            obs_critic_prime_demo
+        )
         self.bc_replay_buffer.store(obs_policy_demo, act_demo)
 
         self.data_collect_time += time.time() - _t
