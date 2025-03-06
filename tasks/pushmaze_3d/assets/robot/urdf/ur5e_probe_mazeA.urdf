@@ -35,19 +35,19 @@
    <joint name="table_ground" type="fixed">
         <parent link="ground"/>
         <child link="table"/>
-        <origin rpy="0 0 0" xyz="0.0 0.0 0"/>
+        <origin rpy="0 0 0" xyz="0.0 0.0 0.15"/>
    </joint>
    <link name="table">
     <visual>
       <origin xyz="0 0 0"/>
       <geometry>
-        <box size="1.0 1.0 0.6"/>
+        <box size="0.5 0.5 0.3"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="0 0 0"/>
       <geometry>
-        <box size="1.0 1.0 0.6"/>
+        <box size="0.5 0.5 0.3"/>
       </geometry>
     </collision>
     <inertial>
@@ -62,7 +62,7 @@
         <visual>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.7 0.1 0.01"/>
+                <box size="0.07 0.01 0.05"/>
             </geometry>
             <material name="">
                 <color rgba="0 0 0 1"/>
@@ -71,7 +71,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.7 0.1 0.15"/>
+                <box size="0.07 0.01 0.05"/>
             </geometry>
         </collision>
         <inertial>
@@ -83,7 +83,7 @@
         <visual>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.1 0.7 0.01"/>
+                <box size="0.01 0.07 0.05"/>
             </geometry>
             <material name="">
                 <color rgba="0 0 0 1"/>
@@ -92,7 +92,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.1 0.7 0.15"/>
+                <box size="0.01 0.07 0.05"/>
             </geometry>
         </collision>
         <inertial>
@@ -103,12 +103,12 @@
     <joint name="obs_L1_1" type="fixed">
         <parent link="table"/>
         <child link="obs_L1_1"/>
-        <origin rpy="0 0 0" xyz="0.6 0.3 0"/>
+        <origin rpy="0 0 0" xyz="0.06 0.03 0.15"/>
     </joint>
     <joint name="obs_L1_2" type="fixed">
         <parent link="table"/>
         <child link="obs_L1_2"/>
-        <origin rpy="0 0 0" xyz="0.3 0.6 0"/>
+        <origin rpy="0 0 0" xyz="0.03 0.06 0.15"/>
     </joint>
 
     <!-- Obstacle L2 (bottom left) -->
@@ -116,7 +116,7 @@
         <visual>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.7 0.1 0.01"/>
+                <box size="0.07 0.01 0.05"/>
             </geometry>
             <material name="">
                 <color rgba="0 0 0 1"/>
@@ -125,7 +125,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.7 0.1 0.15"/>
+                <box size="0.07 0.01 0.05"/>
             </geometry>
         </collision>
         <inertial>
@@ -137,7 +137,7 @@
         <visual>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.1 0.7 0.01"/>
+                <box size="0.01 0.07 0.05"/>
             </geometry>
             <material name="">
                 <color rgba="0 0 0 1"/>
@@ -146,7 +146,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.1 0.7 0.15"/>
+                <box size="0.01 0.07 0.05"/>
             </geometry>
         </collision>
         <inertial>
@@ -157,21 +157,21 @@
     <joint name="obs_L2_1" type="fixed">
         <parent link="table"/>
         <child link="obs_L2_1"/>
-        <origin rpy="0 0 0" xyz="-0.6 -0.3 0"/>
+        <origin rpy="0 0 0" xyz="-0.06 -0.03 0.15"/>
     </joint>
     <joint name="obs_L2_2" type="fixed">
         <parent link="table"/>
         <child link="obs_L2_2"/>
-        <origin rpy="0 0 0" xyz="-0.3 -0.6 0"/>
+        <origin rpy="0 0 0" xyz="-0.03 -0.06 0.15"/>
     </joint>
 
 
-    <!-- Obstacle L2 (bottom right) -->
+    <!-- Obstacle L3 (bottom right) -->
      <link name="obs_L3_1">
         <visual>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.7 0.1 0.01"/>
+                <box size="0.07 0.01 0.05"/>
             </geometry>
             <material name="">
                 <color rgba="0 0 0 1"/>
@@ -180,7 +180,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.7 0.1 0.15"/>
+                <box size="0.07 0.01 0.05"/>
             </geometry>
         </collision>
         <inertial>
@@ -192,7 +192,7 @@
         <visual>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.1 0.7 0.01"/>
+                <box size="0.01 0.07 0.05"/>
             </geometry>
             <material name="">
                 <color rgba="0 0 0 1"/>
@@ -201,7 +201,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.1 0.7 0.15"/>
+                <box size="0.01 0.07 0.05"/>
             </geometry>
         </collision>
         <inertial>
@@ -212,20 +212,20 @@
     <joint name="obs_L3_1" type="fixed">
         <parent link="table"/>
         <child link="obs_L3_1"/>
-        <origin rpy="0 0 0" xyz="0.6 -0.3 0"/>
+        <origin rpy="0 0 0" xyz="0.06 -0.03 0.15"/>
     </joint>
     <joint name="obs_L3_2" type="fixed">
         <parent link="table"/>
         <child link="obs_L3_2"/>
-        <origin rpy="0 0 0" xyz="0.3 -0.6 0"/>
+        <origin rpy="0 0 0" xyz="0.03 -0.06 0.15"/>
     </joint>
 
-
+    <!-- Obstacle L4 (top left) -->
      <link name="obs_L4_1">
         <visual>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.7 0.1 0.01"/>
+                <box size="0.07 0.01 0.05"/>
             </geometry>
             <material name="">
                 <color rgba="0 0 0 1"/>
@@ -234,7 +234,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.7 0.1 0.15"/>
+                <box size="0.07 0.01 0.05"/>
             </geometry>
         </collision>
         <inertial>
@@ -246,7 +246,7 @@
         <visual>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.1 0.7 0.01"/>
+                <box size="0.01 0.07 0.05"/>
             </geometry>
             <material name="">
                 <color rgba="0 0 0 1"/>
@@ -255,7 +255,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
             <geometry>
-                <box size="0.1 0.7 0.15"/>
+                <box size="0.01 0.07 0.05"/>
             </geometry>
         </collision>
         <inertial>
@@ -266,19 +266,19 @@
     <joint name="obs_L4_1" type="fixed">
         <parent link="table"/>
         <child link="obs_L4_1"/>
-        <origin rpy="0 0 0" xyz="-0.6 0.3 0"/>
+        <origin rpy="0 0 0" xyz="-0.06 0.03 0.15"/>
     </joint>
     <joint name="obs_L4_2" type="fixed">
         <parent link="table"/>
         <child link="obs_L4_2"/>
-        <origin rpy="0 0 0" xyz="-0.3 0.6 0"/>
+        <origin rpy="0 0 0" xyz="-0.03 0.06 0.15"/>
     </joint>
 
   <!-- Base Link -->
   <joint name="base_link_ground" type="fixed">
         <parent link="ground"/>
         <child link="base_link"/>
-        <origin rpy="0 0 0" xyz="-0.7 0.0 0"/>
+        <origin rpy="0 0 0" xyz="-0.5 0.0 0"/>
   </joint>
   <link name="base_link">
     <visual>

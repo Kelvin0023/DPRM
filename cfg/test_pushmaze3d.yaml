@@ -1,11 +1,10 @@
 defaults:
-  - /task/Maze
-  - /planner/PRM_Maze
+  - /task/PushMaze3D
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
 # task id
-task_id: "Isaac-MazeBot-v0"
+task_id: "Isaac-PushMaze3D-v0"
 
 # seed - set to -1 to choose random seed
 seed: 0
@@ -17,7 +16,7 @@ gpu: '0'
 disable_fabric: False
 
 # environment number
-num_envs: 4
+num_envs: 1
 
 # disable graphics
 headless: False

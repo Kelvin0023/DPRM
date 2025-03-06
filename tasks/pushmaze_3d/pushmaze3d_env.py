@@ -10,13 +10,13 @@ from omni.isaac.lab.envs.common import VecEnvObs, VecEnvStepReturn
 from omni.isaac.lab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from omni.isaac.lab.utils.math import quat_from_angle_axis, quat_conjugate, quat_mul, sample_uniform
 
-from tasks.pusht_3d.pusht3d_env_cfg import PushT3DEnvCfg
+from tasks.pushmaze_3d.pushmaze3d_env_cfg import PushMaze3DEnvCfg
 from utils.misc import AverageScalarMeter, to_torch
 
 
-class PushT3DEnv(DirectRLEnv):
-    cfg: PushT3DEnvCfg
-    def __init__(self, cfg: PushT3DEnvCfg, render_mode: str | None = None, **kwargs):
+class PushMaze3DEnv(DirectRLEnv):
+    cfg: PushMaze3DEnvCfg
+    def __init__(self, cfg: PushMaze3DEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
         # list of actuated joints
         self.actuated_dof_indices = list()

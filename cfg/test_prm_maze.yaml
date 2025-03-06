@@ -1,6 +1,6 @@
 defaults:
   - /task/Maze
-  - /planner/PRM
+  - /planner/PRM_Maze
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -20,7 +20,7 @@ disable_fabric: False
 num_envs: 4096
 
 # disable graphics
-headless: True
+headless: False
 
 # device for running physics simulation
 pipeline: 'gpu'

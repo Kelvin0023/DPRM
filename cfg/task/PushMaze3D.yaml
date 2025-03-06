@@ -1,0 +1,36 @@
+# sim
+decimation: 2
+episode_length_s: 10.0
+
+# task
+num_actions: 6
+num_observations: 29
+num_states: 29
+num_q_space: 23
+
+# reward and success threshold
+reward_type: mixed  # sparse, dense, or mixed
+pos_dense_reward_scale: 0.01
+rot_dense_reward_scale: 0.01
+success_reward_scale: 1.0
+success_pos_threshold: 0.05
+success_rot_threshold: 0.2
+
+# PRM sampling space limits
+dof_pos_lower_limit: [-3.14, -3.14, -3.14, -3.14, -3.14, -3.14]
+dof_pos_upper_limit: [3.14, 3.14, 3.14, 3.14, 3.14, 3.14]
+dof_vel_lower_limit: [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+dof_vel_upper_limit: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+obj_pos_lower_limit: [-0.3, -0.3]
+obj_pos_upper_limit: [0.3, 0.3]
+obj_vel_lower_limit: [-1.0, -1.0]
+obj_vel_upper_limit: [1.0, 1.0]
+
+valid_probe_object_thres: 0.2
+max_height: 0.3305
+min_height: 0.3295
+
+# default hand and object configuration
+default_hand_joint_pos: [0, -1.57, 1.57, -1.57, -1.57, 0]
+default_object_pos: [0.0, 0.0, 0.3305]
+default_object_quat: [1.0, 0.0, 0.0, 0.0]

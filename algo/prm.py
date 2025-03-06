@@ -342,16 +342,16 @@ class PRM:
             next_obs_critic = obs_dict["critic"]
             next_obs_policy = obs_dict["policy"]
 
-            # update the replay buffer
-            self.replay_buffer.store(
-                self.obs_policy_buf[0, :, :],
-                self.obs_critic_buf[0, :, :],
-                self.action_buf.transpose(0, 1),
-                env_rewsum,
-                env_not_done,
-                next_obs_policy,
-                next_obs_critic
-            )
+            # # update the replay buffer
+            # self.replay_buffer.store(
+            #     self.obs_policy_buf[0, :, :],
+            #     self.obs_critic_buf[0, :, :],
+            #     self.action_buf.transpose(0, 1),
+            #     env_rewsum,
+            #     env_not_done,
+            #     next_obs_policy,
+            #     next_obs_critic
+            # )
 
 
 

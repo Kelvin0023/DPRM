@@ -1,3 +1,4 @@
+from time import sleep
 import torch
 import numpy as np
 from typing import Any
@@ -557,10 +558,10 @@ class PushTEnv(DirectRLEnv):
         )
         goal_pos += self.scene.env_origins  # add the origin of each environment
         # set goal orientation
-        self.goal_rot[env_ids] = gen_rot_around_z(len(env_ids), device=self.device)
+        self.goal_rot[env_ids, :] = goals[:, 2:6]
+        # set the goal object state in simulation
         self.goal = torch.cat([self.goal_pos_xy, self.goal_rot], dim=1)
         self.goal_markers.visualize(goal_pos, self.goal_rot)
-
 
     def q_to_goal(self, q: torch.Tensor) -> torch.Tensor:
         """ Extract goal position from q_state """
@@ -689,6 +690,20 @@ class PushTEnv(DirectRLEnv):
 
         x_start_prime = self.get_env_states()
         return invalid, x_start_prime
+
+    def set_env_states_from_obs(self, obs_list) -> None:
+        """ Visualize the demos extracted from PRM graph """
+        for i in range(obs_list.shape[0] - 1, -1, -1):
+            q_states = obs_list[i, 0:15].unsqueeze(0).to(self.device)
+            goal = obs_list[i, 15:21].unsqueeze(0).to(self.device)
+
+            with torch.inference_mode():
+                # set the new state to the environment 1
+                self.set_env_states(q_states, torch.tensor([0], device=self.device))
+                # set the goal to environment 1
+                self.set_goal(goal, torch.tensor([0], device=self.device))
+                self.simulate()
+                sleep(0.5)
 
 
 ##
