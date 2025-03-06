@@ -1,5 +1,5 @@
+from time import sleep
 import torch
-from typing import Any
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, RigidObject
@@ -601,6 +601,20 @@ class PushMazeEnv(DirectRLEnv):
 
         x_start_prime = self.get_env_states()
         return invalid, x_start_prime
+
+    def set_env_states_from_obs(self, obs_list) -> None:
+        """ Visualize the demos extracted from PRM graph """
+        for i in range(obs_list.shape[0] - 1, -1, -1):
+            q_states = obs_list[i, 0:15].unsqueeze(0).to(self.device)
+            goal = obs_list[i, 15:17].unsqueeze(0).to(self.device)
+
+            with torch.inference_mode():
+                # set the new state to the environment 1
+                self.set_env_states(q_states, torch.tensor([0], device=self.device))
+                # set the goal to environment 1
+                self.set_goal(goal, torch.tensor([0], device=self.device))
+                self.simulate()
+                sleep(0.5)
 
 
 ##

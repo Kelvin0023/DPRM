@@ -6,13 +6,13 @@ from utils.misc import omegaconf_to_dict
 # Declare the global variable
 simulation_app = None
 
-@hydra.main(config_name="test_prm_pusht", config_path="cfg", version_base="1.2")
+@hydra.main(config_name="test_prm_pushmaze", config_path="cfg", version_base="1.2")
 def create_sim_app(cfg: DictConfig):
     global simulation_app
 
     # parse the config file and convert it to a dictionary
-    task_cfg = omegaconf_to_dict(cfg)
-    app_launcher = AppLauncher(headless=task_cfg["headless"])
+    maze_cfg = omegaconf_to_dict(cfg)
+    app_launcher = AppLauncher(headless=maze_cfg["headless"])
     simulation_app = app_launcher.app
 
 # launch omniverse app
@@ -21,22 +21,22 @@ create_sim_app()
 
 
 import os
+from time import sleep
 import gymnasium as gym
 import torch
 import numpy as np
-from time import sleep
 import matplotlib.pyplot as plt
 
 from omni.isaac.lab_tasks.utils import parse_env_cfg
 from omni.isaac.lab.utils import update_class_from_dict
 
 from utils.misc import set_np_formatting, set_seed
-from tasks.push_t.pusht_env_cfg import PushTEnvCfg
+from tasks.push_maze.config.maze import MAZEA_CFG, MAZEB_CFG, MAZEC_CFG
 
 
-@hydra.main(config_name="test_prm_pusht", config_path="cfg", version_base="1.2")
+@hydra.main(config_name="test_prm_pushmaze", config_path="cfg", version_base="1.2")
 def build_prm_mazebot(cfg: DictConfig):
-    """ Test the PushT task with random actions """
+    """ Test the MazeBot task with random actions """
     global simulation_app
 
     # set numpy formatting for printing only
@@ -46,24 +46,32 @@ def build_prm_mazebot(cfg: DictConfig):
     cfg.seed = set_seed(cfg.seed)
 
     # parse the config file and convert it to a dictionary
-    task_cfg = omegaconf_to_dict(cfg)
+    maze_cfg = omegaconf_to_dict(cfg)
 
     # create environment configuration
     env_cfg = parse_env_cfg(
-        task_cfg["task_id"],
-        use_gpu=True if task_cfg["pipeline"] == "gpu" else False,
-        num_envs=task_cfg["num_envs"],
-        use_fabric=not task_cfg["disable_fabric"],
+        maze_cfg["task_id"],
+        use_gpu=True if maze_cfg["pipeline"] == "gpu" else False,
+        num_envs=maze_cfg["num_envs"],
+        use_fabric=not maze_cfg["disable_fabric"],
     )
 
     # update the DirectRLEnvCfg with the task configuration
-    update_class_from_dict(env_cfg, task_cfg["task"])
+    update_class_from_dict(env_cfg, maze_cfg["task"])
+    # select the maze configuration and override the robot configuration
+    selected_maze = maze_cfg["task"]["maze"]
+    MAZE_CFG = {
+        "maze_a": MAZEA_CFG,
+        "maze_b": MAZEB_CFG,
+        "maze_c": MAZEC_CFG,
+    }
+    env_cfg.robot_cfg = MAZE_CFG[selected_maze].replace(prim_path="/World/envs/env_.*/Robot")
+
     # create DirectRLEnv
-    print("task id: ", task_cfg["task_id"])
-    env = gym.make(task_cfg["task_id"], cfg=env_cfg)
+    env = gym.make(maze_cfg["task_id"], cfg=env_cfg)
 
     # create sampling-based planner
-    planner_cfg = task_cfg["planner"]
+    planner_cfg = maze_cfg["planner"]
     planner = hydra.utils.get_class(planner_cfg["_target_"])(
         cfg=planner_cfg,
         env=env,
@@ -73,7 +81,7 @@ def build_prm_mazebot(cfg: DictConfig):
         obs_policy_rms=None,
         obs_critic_rms=None,
         value_rms=None,
-        device=task_cfg["rl_device"],
+        device=maze_cfg["rl_device"],
         gamma=0.99,
     )
 
@@ -83,7 +91,7 @@ def build_prm_mazebot(cfg: DictConfig):
     # reset environment
     env.reset()
 
-    if task_cfg["task_type"] == "grow":
+    if maze_cfg["task_type"] == "grow":
         # run PRM
         last_value = 0
         planning_steps = 0
@@ -97,22 +105,22 @@ def build_prm_mazebot(cfg: DictConfig):
             # record the epoch and nodes number
             epochs.append(planning_steps)
             num_nodes_list.append(planner.prm_q.shape[0])
-            os.makedirs(task_cfg["saved_file_name_format"], exist_ok=True)
+            os.makedirs(maze_cfg["saved_file_name_format"], exist_ok=True)
             if num_nodes // 1000 != last_value:
                 last_value += 1
-                planner.save_prm(f"{task_cfg['saved_file_name_format']}_{num_nodes}.pkl")
+                planner.save_prm(f"{maze_cfg['saved_file_name_format']}_{num_nodes}.pkl")
                 # save nodes number data
-                if task_cfg["save_num_nodes"]:
+                if maze_cfg["save_num_nodes"]:
                     np.save(
-                        f"epoch_{task_cfg['planner']['new_state_portion']}_{num_nodes}.npy",
+                        f"epoch_{maze_cfg['planner']['new_state_portion']}_{num_nodes}.npy",
                         np.array(epochs)
                     )
                     np.save(
-                        f"num_nodes_list_{task_cfg['planner']['new_state_portion']}_{num_nodes}.npy",
+                        f"num_nodes_list_{maze_cfg['planner']['new_state_portion']}_{num_nodes}.npy",
                         np.array(num_nodes_list)
                     )
-    elif task_cfg["task_type"] == "visualize":
-        planner.load_prm(task_cfg["saved_prm_file"])
+    elif maze_cfg["task_type"] == "visualize":
+        planner.load_prm(maze_cfg["saved_prm_file"])
         print("Average children number in the graph: ", planner.children_counter.float().mean())
     else:
         raise ValueError("Invalid task type")

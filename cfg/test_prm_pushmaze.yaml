@@ -1,0 +1,37 @@
+defaults:
+  - /task/PushMaze
+  - /planner/PRM_PushMaze
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# task id
+task_id: "Isaac-PushMaze-v0"
+
+# seed - set to -1 to choose random seed
+seed: 0
+
+## device config
+gpu: '0'
+
+# disable fabric and use USD I/O operations
+disable_fabric: False
+
+# environment number
+num_envs: 8192
+
+# disable graphics
+headless: False
+
+# device for running physics simulation
+pipeline: 'gpu'
+
+# device for running planner and RL
+rl_device: 'cuda:0'
+
+# Save number of nodes in each epoch for plotting
+save_num_nodes: False
+
+# the type of task we want to perform ("grow" or "visualize")
+task_type: "grow"
+saved_file_name_format: "PushMaze2D-RP"
+saved_prm_file: ""
