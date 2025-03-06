@@ -20,6 +20,7 @@ create_sim_app()
 
 
 
+import os
 import gymnasium as gym
 import torch
 import numpy as np
@@ -82,51 +83,46 @@ def build_prm_mazebot(cfg: DictConfig):
     # reset environment
     env.reset()
 
-    # run PRM
-    epochs = []
-    num_nodes_list = []
-    for epoch in range(50):
-        planner.run_prm()
-        # Store the values for plotting
-        epochs.append(epoch)
-        num_nodes_list.append(planner.prm_q.shape[0])
 
-    # save data
-    if task_cfg["save_num_nodes"]:
-        np.save(f"epoch_{task_cfg['planner']['new_state_portion']}.npy", np.array(epochs))
-        np.save(f"num_nodes_list_{task_cfg['planner']['new_state_portion']}.npy", np.array(num_nodes_list))
-
-    # Plot num_nodes vs. epoch
-    plt.plot(epochs, num_nodes_list, marker='o')
-    plt.xlabel('Epoch')
-    plt.ylabel('Number of Nodes')
-    plt.title('Number of Nodes vs Epoch')
-    plt.grid(True)
-    plt.show()
-
-    # Perform random walk
-    # walk, obs_buf, act_buf = planner.extract_walks(num_walks=5, length=10)
-    # print("***** Extract Random Walks on PRM *****")
-    # for i in range(walk.shape[0]):
-    #     for j in range(walk.shape[1] - 1):
-    #         if walk[i, j + 1, 0] == float('-inf'):
-    #             break
-    #         planner._visualize_new_edges(
-    #             walk[i, j, :].unsqueeze(0),
-    #             walk[i, j + 1, :].unsqueeze(0),
-    #             edge_color=[0, 0, 0, 1],
-    #             node_color=[1, 0, 0, 1]
-    #         )
-    # print("***** End of Random Walks *****")
-
+    if task_cfg["task_type"] == "grow":
+        # run PRM
+        last_value = 0
+        planning_steps = 0
+        epochs = []
+        num_nodes_list = []
+        while True:
+            planner.run_prm()
+            planning_steps += 1
+            # save the prm every 1000 nodes
+            num_nodes = planner.prm_q.shape[0]
+            # record the epoch and nodes number
+            epochs.append(planning_steps)
+            num_nodes_list.append(planner.prm_q.shape[0])
+            os.makedirs(task_cfg["saved_file_name_format"], exist_ok=True)
+            if num_nodes // 1000 != last_value:
+                last_value += 1
+                planner.save_prm(f"{task_cfg['saved_file_name_format']}_{num_nodes}.pkl")
+                # save nodes number data
+                if task_cfg["save_num_nodes"]:
+                    np.save(
+                        f"epoch_{task_cfg['planner']['new_state_portion']}_{num_nodes}.npy",
+                        np.array(epochs)
+                    )
+                    np.save(
+                        f"num_nodes_list_{task_cfg['planner']['new_state_portion']}_{num_nodes}.npy",
+                        np.array(num_nodes_list)
+                    )
+    elif task_cfg["task_type"] == "visualize":
+        planner.load_prm(task_cfg["saved_prm_file"])
+        print("Average children number in the graph: ", planner.children_counter.float().mean())
+    else:
+        raise ValueError("Invalid task type")
 
     # simulate environment with zero actions
     while simulation_app.is_running():
         print("***** Extract demos from PRM *****")
         # Extract demonstrations
         obs_policy_demo, *_ = planner.extract_demos(num_demos=1, max_len=10, num_parents=1)
-        print("obs_policy_demo.shape", obs_policy_demo[:, 0, :].shape)
-        print("obs_policy_demo.shape", obs_policy_demo[:])
         env.set_env_states_from_obs(obs_policy_demo[:, 0, :])
         sleep(2.0)
 

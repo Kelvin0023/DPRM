@@ -30,3 +30,11 @@ rl_device: 'cuda:0'
 
 # Save number of nodes in each epoch for plotting
 save_num_nodes: False
+
+# the type of task we want to perform ("grow" or "visualize")
+task_type: "grow"
+saved_file_name_format: "PushT2D-RP-plan50"
+saved_prm_file: ""
+
+
+
