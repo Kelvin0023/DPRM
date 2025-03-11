@@ -61,6 +61,13 @@ class BCReplayBuffer:
 
         return obs_policy, action
 
+    def clear(self):
+        """
+        Clear the replay buffer.
+        """
+        self.memory = []
+        self.position = 0
+
     def __len__(self):
         """
         Return the current size of the internal memory (buffer).
@@ -133,6 +140,13 @@ class ReplayBuffer:
         obs_critic_prime = torch.stack(obs_critic_prime).to(self.device)
 
         return obs_policy, obs_critic, action, reward_sum, env_not_done, obs_policy_prime, obs_critic_prime
+
+    def clear(self):
+        """
+        Clear the replay buffer.
+        """
+        self.memory = []
+        self.position = 0
 
     def __len__(self):
         """
