@@ -3,10 +3,10 @@ import torch.nn as nn
 from typing import Union
 from copy import deepcopy
 
-from algo.model.mlp import MLP, ResidualMLP
+from algo.diffusion.mlp import MLP, ResidualMLP
     
     
-class CriticObsAct(torch.nn.Module):
+class CriticQ(torch.nn.Module):
     """State-action double critic network."""
 
     def __init__(
@@ -17,7 +17,7 @@ class CriticObsAct(torch.nn.Module):
         action_steps=1,
         activation_type="Mish",
         use_layernorm=False,
-        residual_tyle=False,
+        residual_style=False,
         **kwargs,
     ):
         super().__init__()
@@ -27,7 +27,7 @@ class CriticObsAct(torch.nn.Module):
         self.state_dim = obs_critic_dim
 
         mlp_dims = [obs_critic_dim + action_dim * action_steps] + mlp_dims + [1]
-        if residual_tyle:
+        if residual_style:
             self.Q1 = ResidualMLP(
                 mlp_dims,
                 activation_type=activation_type,
@@ -83,3 +83,51 @@ class CriticObsAct(torch.nn.Module):
             return torch.min(self.Q1(x).squeeze(1), self.Q2(x).squeeze(1))
 
 
+class CriticV(torch.nn.Module):
+    """State-action double critic network."""
+
+    def __init__(
+        self,
+        mlp_dims,
+        obs_critic_dim,
+        activation_type="Mish",
+        use_layernorm=False,
+        residual_tyle=False,
+        **kwargs,
+    ):
+        super().__init__()
+
+        self.state_dim = obs_critic_dim
+
+        mlp_dims = [obs_critic_dim] + mlp_dims + [1]
+        if residual_tyle:
+            self.V = ResidualMLP(
+                mlp_dims,
+                activation_type=activation_type,
+                out_activation_type="Identity",
+                use_layernorm=use_layernorm,
+            )
+        else:
+            self.V = MLP(
+                mlp_dims,
+                activation_type=activation_type,
+                out_activation_type="Identity",
+                use_layernorm=use_layernorm,
+            )
+
+        # Initialize model parameters
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        # Initialize weights and biases for the layers in time_mlp
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, state):
+        return self.V(state).squeeze(1)
+
+    def sample_q1(self, state):
+        with torch.no_grad():
+            return self.V(state).squeeze(1)

@@ -1,9 +1,21 @@
+model:
+  actor:
+    num_timesteps: 50
+    time_dim: 16
+    mlp_dims: [512, 512, 512]
+    activation_type: ReLU
+    use_layernorm: False
+    residual_style: True
+  critic:
+    mlp_dims: [256, 256, 256]
+    activation_type: Mish
+    use_layernorm: False
+    residual_style: True
+
 trainer:
-  # learning rate and kl threshold
+  # learning rate and weight decay
   learning_rate: 3e-4
   weight_decay: 0.0
-  # PPO batch collection
-  num_mini_batches: 4
 
   # value normalization or scaling
   normalize_value: True

@@ -1,0 +1,51 @@
+model:
+  actor:
+    num_timesteps: 50
+    time_dim: 16
+    mlp_dims: [512, 512, 512]
+    activation_type: ReLU
+    use_layernorm: False
+    residual_style: True
+  critic_q:
+    mlp_dims: [256, 256, 256]
+    activation_type: Mish
+    use_layernorm: False
+    residual_style: True
+  critic_v:
+    mlp_dims: [256, 256, 256]
+    activation_type: Mish
+    use_layernorm: False
+    residual_style: True
+
+trainer:
+  # learning rate and weight decay
+  learning_rate: 3e-4
+  weight_decay: 0.0
+
+  # value normalization or scaling
+  normalize_value: False
+  value_scale: 1.0
+
+  # grad clipping
+  truncate_grads: True
+  grad_norm: 1.0
+
+  step_start_ema: 1000
+  ema_decay: 0.995
+  update_ema_every: 5
+
+  # batch size
+  batch_size: 1024
+  # mini epochs
+  iterations: 20
+
+  eta: 10.0
+  tau: 0.005
+  discount: 0.99
+
+  lr_decay: False
+  lr_max_T: 1000
+
+  # expectile exploration
+  num_sample: 10
+  critic_hyperparam: 0.7

@@ -12,12 +12,11 @@ except ImportError:
 class PRM:
     """ Prbabilistic Roadmap (PRM) planner for sampling and planning in the task space """
 
-    def __init__(self, cfg, env, buffer, actor_target, critic_target, obs_policy_rms, obs_critic_rms, value_rms, device, gamma):
+    def __init__(self, cfg, env, buffer, model, obs_policy_rms, obs_critic_rms, value_rms, device, gamma):
         self.cfg = cfg
         self.env = env
         self.replay_buffer = buffer
-        self.actor_target = actor_target
-        self.critic_target = critic_target
+        self.model = model
         self.obs_policy_rms = obs_policy_rms
         self.obs_critic_rms = obs_critic_rms
         self.value_rms = value_rms
@@ -95,6 +94,9 @@ class PRM:
         self.x_start_idx = torch.zeros((self.prm_samples_per_epoch,), dtype=torch.int)  # the index of x_start
         self.max_dist = 0.0  # max distance in goal that we could extract in random walks
         self.average_max_dist = 0.0  # average max distance in goal that we could extract in random walks
+
+        # Add plan steps to the replay buffer
+        self.update_replay_buffer = False
 
     def load_prm(self, load_file):
         with open(load_file, "rb") as f:
@@ -296,7 +298,7 @@ class PRM:
         # Normalize the observation
         processed_obs = self.obs_policy_rms(obs_dict['policy'])
         # Get predicted actions from target actor
-        pred_action_chunks = self.actor_target.sample_action_chunks(processed_obs)
+        pred_action_chunks = self.model.sample_action_chunks(processed_obs, use_expectile_exploration=True)
         return {"actions": pred_action_chunks}
 
     def plan_steps(self) -> None:
@@ -342,18 +344,17 @@ class PRM:
             next_obs_critic = obs_dict["critic"]
             next_obs_policy = obs_dict["policy"]
 
-            # # update the replay buffer
-            # self.replay_buffer.store(
-            #     self.obs_policy_buf[0, :, :],
-            #     self.obs_critic_buf[0, :, :],
-            #     self.action_buf.transpose(0, 1),
-            #     env_rewsum,
-            #     env_not_done,
-            #     next_obs_policy,
-            #     next_obs_critic
-            # )
-
-
+            # update the replay buffer
+            if self.update_replay_buffer:
+                self.replay_buffer.store(
+                    self.obs_policy_buf[0, :, :],
+                    self.obs_critic_buf[0, :, :],
+                    self.action_buf.transpose(0, 1),
+                    env_rewsum,
+                    env_not_done,
+                    next_obs_policy,
+                    next_obs_critic
+                )
 
     def add_nodes(self) -> None:
         """Add nodes based on q-sampled"""

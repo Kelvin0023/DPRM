@@ -1,12 +1,15 @@
 defaults:
   - /task/PushT
   - /planner/PRM_PushT
-  - /policy/DiffQL
+  - /policy/IDQL
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
 # task id
 task_id: "Isaac-PushT-v0"
+
+# learning algorithm
+algo: "IDQL"
 
 # seed - set to -1 to choose random seed
 seed: 0

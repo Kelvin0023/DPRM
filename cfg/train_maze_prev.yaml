@@ -1,12 +1,15 @@
 defaults:
   - /task/Maze
   - /planner/PRM_Maze
-  - /policy/DiffQL
+  - /policy/IDQL
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
 # task id
 task_id: "Isaac-MazeBot-v0"
+
+# learning algorithm
+algo: "IDQL"
 
 # seed - set to -1 to choose random seed
 seed: 0

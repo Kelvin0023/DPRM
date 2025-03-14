@@ -1,7 +1,151 @@
 import math
-import numpy as np
 import torch
 import torch.nn as nn
+from collections import OrderedDict
+from torch.nn.utils import spectral_norm
+
+
+activation_dict = nn.ModuleDict(
+    {
+        "ReLU": nn.ReLU(),
+        "ELU": nn.ELU(),
+        "GELU": nn.GELU(),
+        "Tanh": nn.Tanh(),
+        "Mish": nn.Mish(),
+        "Identity": nn.Identity(),
+        "Softplus": nn.Softplus(),
+    }
+)
+
+class MLP(nn.Module):
+    def __init__(
+        self,
+        dim_list,
+        append_dim=0,
+        append_layers=None,
+        activation_type="Tanh",
+        out_activation_type="Identity",
+        use_layernorm=False,
+        use_spectralnorm=False,
+    ):
+        super(MLP, self).__init__()
+
+        # Construct module list: if use `Python List`, the modules are not
+        # added to computation graph. Instead, we should use `nn.ModuleList()`.
+        self.moduleList = nn.ModuleList()
+        self.append_layers = append_layers
+        num_layer = len(dim_list) - 1
+        for idx in range(num_layer):
+            i_dim = dim_list[idx]
+            o_dim = dim_list[idx + 1]
+            if append_dim > 0 and idx in append_layers:
+                i_dim += append_dim
+
+            linear_layer = nn.Linear(i_dim, o_dim)
+            if use_spectralnorm:
+                linear_layer = spectral_norm(linear_layer)
+            if idx == num_layer - 1:
+                module = nn.Sequential(
+                    OrderedDict(
+                        [
+                            ("linear_1", linear_layer),
+                            ("act_1", activation_dict[out_activation_type]),
+                        ]
+                    )
+                )
+            else:
+                if use_layernorm:
+                    module = nn.Sequential(
+                        OrderedDict(
+                            [
+                                ("linear_1", linear_layer),
+                                ("norm_1", nn.LayerNorm(o_dim)),
+                                ("act_1", activation_dict[activation_type]),
+                            ]
+                        )
+                    )
+                else:
+                    module = nn.Sequential(
+                        OrderedDict(
+                            [
+                                ("linear_1", linear_layer),
+                                ("act_1", activation_dict[activation_type]),
+                            ]
+                        )
+                    )
+            self.moduleList.append(module)
+
+    def forward(self, x, append=None):
+        for layer_ind, m in enumerate(self.moduleList):
+            if append is not None and layer_ind in self.append_layers:
+                x = torch.cat((x, append), dim=-1)
+            x = m(x)
+        return x
+
+
+class ResidualMLP(nn.Module):
+    """
+    Simple multi layer perceptron network with residual connections for
+    benchmarking the performance of different networks. The resiudal layers
+    are based on the IBC paper implementation, which uses 2 residual lalyers
+    with pre-actication with or without dropout and normalization.
+    """
+
+    def __init__(
+        self,
+        dim_list,
+        activation_type="Mish",
+        out_activation_type="Identity",
+        use_layernorm=False,
+    ):
+        super(ResidualMLP, self).__init__()
+        hidden_dim = dim_list[1]
+        num_hidden_layers = len(dim_list) - 3
+        assert num_hidden_layers % 2 == 0
+        self.layers = nn.ModuleList([nn.Linear(dim_list[0], hidden_dim)])
+        self.layers.extend(
+            [
+                TwoLayerPreActivationResNetLinear(
+                    hidden_dim=hidden_dim,
+                    activation_type=activation_type,
+                    use_layernorm=use_layernorm,
+                )
+                for _ in range(1, num_hidden_layers, 2)
+            ]
+        )
+        self.layers.append(nn.Linear(hidden_dim, dim_list[-1]))
+        self.layers.append(activation_dict[out_activation_type])
+
+    def forward(self, x):
+        for _, layer in enumerate(self.layers):
+            x = layer(x)
+        return x
+
+
+class TwoLayerPreActivationResNetLinear(nn.Module):
+    def __init__(
+        self,
+        hidden_dim,
+        activation_type="Mish",
+        use_layernorm=False,
+    ):
+        super().__init__()
+        self.l1 = nn.Linear(hidden_dim, hidden_dim)
+        self.l2 = nn.Linear(hidden_dim, hidden_dim)
+        self.act = activation_dict[activation_type]
+        if use_layernorm:
+            self.norm1 = nn.LayerNorm(hidden_dim, eps=1e-06)
+            self.norm2 = nn.LayerNorm(hidden_dim, eps=1e-06)
+
+    def forward(self, x):
+        x_input = x
+        if hasattr(self, "norm1"):
+            x = self.norm1(x)
+        x = self.l1(self.act(x))
+        if hasattr(self, "norm2"):
+            x = self.norm2(x)
+        x = self.l2(self.act(x))
+        return x + x_input
 
 
 class SinusoidalPosEmb(nn.Module):
@@ -27,97 +171,80 @@ class SinusoidalPosEmb(nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
-
-class MLP(nn.Module):
+class DiffusionMLP(nn.Module):
     def __init__(
-            self,
-            input_dim,
-            output_dim,
-            time_emb_dim,
-            mlp_hidden_dim,
-            device,
+        self,
+        action_dim,
+        action_horizon,
+        cond_dim,
+        time_emb_dim=16,
+        mlp_dims=[256, 256, 256],
+        cond_mlp_dims=None,
+        activation_type="Mish",
+        out_activation_type="Identity",
+        use_layernorm=False,
+        residual_style=False,
     ):
-        super(MLP, self).__init__()
-
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.time_dim = time_emb_dim
-        self.device = device
+        super(DiffusionMLP, self).__init__()
+        self.action_horizon = action_horizon
+        output_dim = action_dim * action_horizon
 
         # positional embedding layer
-        self.time_mlp = nn.Sequential(
+        self.time_emb_mlp = nn.Sequential(
             SinusoidalPosEmb(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim * 2),
             nn.Mish(),
             nn.Linear(time_emb_dim * 2, time_emb_dim),
         )
 
-        # middle layer
-        input_dim = input_dim + output_dim + time_emb_dim
-        self.middle_mlp = nn.Sequential(
-            nn.Linear(input_dim, mlp_hidden_dim),
-            nn.Mish(),
-            nn.Linear(mlp_hidden_dim, mlp_hidden_dim),
-            nn.Mish(),
-            nn.Linear(mlp_hidden_dim, mlp_hidden_dim),
-            nn.Mish(),
-        )
+        # conditional embedding layer
+        if cond_mlp_dims is not None:
+            self.cond_mlp = MLP(
+                [cond_dim] + cond_mlp_dims,
+                activation_type=activation_type,
+                out_activation_type="Identity",
+            )
+            input_dim = time_emb_dim + action_dim * action_horizon + cond_mlp_dims[-1]
+        else:
+            input_dim = time_emb_dim + action_dim * action_horizon + cond_dim
 
-        # output layer
-        self.output_mlp = nn.Linear(mlp_hidden_dim, output_dim)
+        # check if we want to use residual style
+        if residual_style:
+            self.mean_mlp = ResidualMLP(
+                [input_dim] + mlp_dims + [output_dim],
+                activation_type=activation_type,
+                out_activation_type=out_activation_type,
+                use_layernorm=use_layernorm,
+            )
+        else:
+            self.mean_mlp = MLP(
+                [input_dim] + mlp_dims + [output_dim],
+                activation_type=activation_type,
+                out_activation_type=out_activation_type,
+                use_layernorm=use_layernorm,
+            )
+
+        self.time_emb_dim = time_emb_dim
 
         # Initialize model parameters
         self._initialize_weights()
 
     def _initialize_weights(self):
-        # Initialize weights and biases for the layers in time_mlp
-        for m in self.time_mlp:
+        # Initialize weights and biases for the linear layers
+        for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.constant_(m.bias, 0)
-
-        # Initialize weights and biases for the layers in middle_mlp
-        for m in self.middle_mlp:
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                nn.init.constant_(m.bias, 0)
-
-        # Initialize weights and biases for the output_mlp layer
-        nn.init.xavier_uniform_(self.output_mlp.weight)
-        nn.init.constant_(self.output_mlp.bias, 0)
 
     def forward(self, x, time, state):
         # Add positional encoding to the time input
-        t_emb = self.time_mlp(time)
+        t_emb = self.time_emb_mlp(time)
+        # Encode observation
+        if hasattr(self, "cond_mlp"):
+            state = self.cond_mlp(state)
         # Concatenate the input tensor with the positional encoding
         x = torch.cat([x, t_emb, state], dim=1)
         # Pass the concatenated tensor through the middle MLP
-        x = self.middle_mlp(x)
-        # Output the final tensor with the shape of the action dimension
-        return self.output_mlp(x)
-
-
-
-
-
-
-
-if __name__ == "__main__":
-    # Initialize the dimension size for the positional embedding
-    dim = 32
-    # Create a SinusoidalPosEmb object
-    pos_emb_layer = SinusoidalPosEmb(dim)
-
-    # Generate test input data: a tensor of positions
-    test_input = torch.arange(10, dtype=torch.float32)
-
-    # Pass the test input through the SinusoidalPosEmb layer
-    output = pos_emb_layer(test_input)
-
-    print("Test Input:\n", test_input.shape)
-    print("Output Embeddings:\n", output.shape)
-
-    # Verify output shape
-    assert output.shape == (
-    test_input.shape[0], dim), f"Expected output shape {(test_input.shape[0], dim)}, but got {output.shape}"
-    print("Test passed!")
+        pred_act_chunk = self.mean_mlp(x)
+        # Output the final tensor with the shape of the [Ta, Da]
+        return pred_act_chunk

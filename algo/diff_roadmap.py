@@ -3,16 +3,16 @@ import time
 import logging
 import hydra
 import wandb
-import copy
 import numpy as np
 import torch
 import torch.nn as nn
 
-from algo.diffusion.diffusion_actor import DiffusionActor
-from algo.diffusion.critic import CriticObsAct
 from algo.diffusion.diffusion_ql import DiffusionQL
+from algo.diffusion.diffusion_iql import ImplicitDiffusionQL
+from algo.diffusion.trainer_diffusion_ql import DiffusionQLTrainer
+from algo.diffusion.trainer_diffusion_iql import ImplicitDiffusionQLTrainer
 from algo.util.running_mean_std import RunningMeanStd
-from algo.util.replay import ReplayBuffer, BCReplayBuffer
+from algo.util.replay import ReplayBuffer
 from utils.misc import AverageScalarMeter
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,9 @@ class DiffusionRoadmap:
         self.cfg = cfg
         self.env = env
         self.device = self.cfg.get("rl_device", "cuda:0")
+
+        # Setup learning algorithm
+        self.algo = cfg["algo"]
 
         # Fetch dimension info from env
         self.obs_critic_dim = self.env.cfg.num_states
@@ -43,11 +46,6 @@ class DiffusionRoadmap:
         self.value_rms = RunningMeanStd((1,)).to(self.device)
 
         # ---- Replay Buffer ----
-        self.bc_replay_buffer = BCReplayBuffer(
-            buffer_size=10000,
-            batch_size=self.cfg["policy"]["trainer"]["batch_size"],
-            device=self.device,
-        )
         self.replay_buffer = ReplayBuffer(
             buffer_size=100000,
             batch_size=self.cfg["policy"]["trainer"]["batch_size"],
@@ -59,56 +57,68 @@ class DiffusionRoadmap:
         self.models = nn.ModuleList()
 
         # create Diffusion Actor
-        self.actor = DiffusionActor(
-            obs_dim=self.obs_policy_dim,
-            action_dim=self.act_dim,
-            action_bound=1.0,
-            chunk_size=self.chunk_size,
-            device=self.device,
-            beta_schedule="cosine",
-            num_timesteps=50,
-        ).to(self.device)
+        if self.algo == "DQL":
+            self.model = DiffusionQL(
+                actor_mlp_cfg=self.cfg["policy"]["model"]["actor_mlp"],
+                critic_mlp_cfg=self.cfg["policy"]["model"]["critic_mlp"],
+                obs_policy_dim=self.obs_policy_dim,
+                obs_critic_dim=self.obs_critic_dim,
+                action_dim=self.act_dim,
+                action_bound=1.0,
+                chunk_size=self.chunk_size,
+                device=self.device,
+                beta_schedule="cosine",
+                num_timesteps=self.cfg["policy"]["model"]["actor"]["num_timesteps"],
+            ).to(self.device)
+        elif self.algo == "IDQL":
+            self.model = ImplicitDiffusionQL(
+                actor_mlp_cfg=self.cfg["policy"]["model"]["actor"],
+                critic_q_mlp_cfg=self.cfg["policy"]["model"]["critic_q"],
+                critic_v_mlp_cfg=self.cfg["policy"]["model"]["critic_v"],
+                obs_policy_dim=self.obs_policy_dim,
+                obs_critic_dim=self.obs_critic_dim,
+                action_dim=self.act_dim,
+                action_bound=1.0,
+                chunk_size=self.chunk_size,
+                device=self.device,
+                beta_schedule="cosine",
+                num_timesteps=self.cfg["policy"]["model"]["actor"]["num_timesteps"],
+                num_sample=self.cfg["policy"]["trainer"]["num_sample"],
+                critic_hyperparam=self.cfg["policy"]["trainer"]["critic_hyperparam"],
+            ).to(self.device)
+        else:
+            raise ValueError(f"Unknown algorithm {self.algo}")
 
-        # create Diffusion Critic
-        self.critic = CriticObsAct(
-            mlp_dims=[256, 256, 256],
-            obs_critic_dim=self.obs_critic_dim,
-            action_dim=self.act_dim,
-            action_steps=self.chunk_size,
-            activation_type="ReLU",
-            use_layernorm=False,
-            residual_style=False,
-        ).to(self.device)
-
-        # EMA target actor network
-        self.actor_target = copy.deepcopy(self.actor)
-
-        # target critic network
-        self.critic_target = copy.deepcopy(self.critic)
-
-        self.models.append(self.actor)
-        self.models.append(self.actor_target)
-        self.models.append(self.critic)
-        self.models.append(self.critic_target)
+        self.models.append(self.model)
 
         # ---- Trainer ----
         logger.log(logging.INFO, "Creating trainers")
         model_trainer_cfg = self.cfg["policy"]["trainer"]
 
-        self.trainer = DiffusionQL(
-            cfg=model_trainer_cfg,
-            env=self.env,
-            replay_buffer=self.replay_buffer,
-            bc_replay_buffer=self.bc_replay_buffer,
-            actor=self.actor,
-            actor_target=self.actor_target,
-            critic=self.critic,
-            critic_target=self.critic_target,
-            obs_policy_rms=self.obs_policy_rms,
-            obs_critic_rms=self.obs_critic_rms,
-            value_rms=self.value_rms,
-            device=self.device
-        )
+        if self.algo == "DQL":
+            self.trainer = DiffusionQLTrainer(
+                cfg=model_trainer_cfg,
+                env=self.env,
+                replay_buffer=self.replay_buffer,
+                bc_replay_buffer=None,
+                model=self.model,
+                obs_policy_rms=self.obs_policy_rms,
+                obs_critic_rms=self.obs_critic_rms,
+                value_rms=self.value_rms,
+                device=self.device
+            )
+        else:
+            self.trainer = ImplicitDiffusionQLTrainer(
+                cfg=model_trainer_cfg,
+                env=self.env,
+                replay_buffer=self.replay_buffer,
+                bc_replay_buffer=None,
+                model=self.model,
+                obs_policy_rms=self.obs_policy_rms,
+                obs_critic_rms=self.obs_critic_rms,
+                value_rms=self.value_rms,
+                device=self.device
+            )
 
         # ---- Sampling-based planner ----
         planner_cfg = self.cfg["planner"]
@@ -116,8 +126,7 @@ class DiffusionRoadmap:
             cfg=planner_cfg,
             env=env,
             buffer=self.replay_buffer,
-            actor_target=self.actor_target,  # use the target task actor for planning
-            critic_target=self.critic_target,  # use the target task critic for planning
+            model=self.model,
             obs_policy_rms=self.obs_policy_rms,
             obs_critic_rms=self.obs_critic_rms,
             value_rms=self.value_rms,
@@ -128,7 +137,6 @@ class DiffusionRoadmap:
         # ---- Output Dir ----
         # allows us to specify a folder where all experiments will reside
         # dev_output is the temporary output directory for development
-        # TODO: configure output dir from hydra config
         logger.log(logging.INFO, "Creating output directory")
         # output_dir = os.path.join(os.path.curdir, output_dir)
         self.output_dir = output_dir
@@ -194,10 +202,7 @@ class DiffusionRoadmap:
 
     def save(self, name):
         weights = {
-            "actor": self.actor.state_dict(),
-            "actor_target": self.actor_target.state_dict(),
-            "critic": self.critic.state_dict(),
-            "critic_target": self.critic_target.state_dict(),
+            "model": self.model.state_dict(),
             "obs_policy_rms": self.obs_policy_rms.state_dict(),
             "obs_critic_rms": self.obs_critic_rms.state_dict(),
             "state_rms": self.state_rms.state_dict(),
@@ -208,10 +213,7 @@ class DiffusionRoadmap:
 
     def restore_test(self, fn):
         checkpoint = torch.load(fn)
-        self.actor.load_state_dict(checkpoint["actor"])
-        self.actor_target.load_state_dict(checkpoint["actor_target"])
-        self.critic.load_state_dict(checkpoint["critic"])
-        self.critic_target.load_state_dict(checkpoint["critic_target"])
+        self.model.load_state_dict(checkpoint["model"])
         self.obs_policy_rms.load_state_dict(checkpoint["obs_policy_rms"])
         self.obs_critic_rms.load_state_dict(checkpoint["obs_critic_rms"])
         self.state_rms.load_state_dict(checkpoint["state_rms"])
@@ -236,7 +238,7 @@ class DiffusionRoadmap:
                 processed_obs = self.obs_policy_rms(obs["policy"])
                 # sample a chunk of actions
                 if time_step % self.query_frequency == 0:
-                    pred_act_chunk = self.actor_target.sample_action_chunks(processed_obs)
+                    pred_act_chunk = self.model.sample_action_chunks(processed_obs)
 
                 next_action = pred_act_chunk[:, time_step % self.query_frequency, :]
                 actions = torch.clamp(next_action, -1.0, 1.0)
@@ -260,16 +262,31 @@ class DiffusionRoadmap:
 
 
     def write_stats(self, metric):
-        bc_loss = metric["bc_loss"]
-        ql_loss = metric["ql_loss"]
-        actor_loss = metric["actor_loss"]
-        critic_loss = metric["critic_loss"]
+        # log performance
         wandb.log({"performance/RLTrainFPS": self.agent_steps / self.rl_train_time}, step=self.agent_steps)
         wandb.log({"performance/EnvStepFPS": self.agent_steps / self.data_collect_time}, step=self.agent_steps)
-        wandb.log({"losses/bc_loss": torch.mean(torch.stack(bc_loss)).item()}, step=self.agent_steps)
-        wandb.log({"losses/ql_loss": torch.mean(torch.stack(ql_loss)).item()}, step=self.agent_steps)
-        wandb.log({"losses/actor_loss": torch.mean(torch.stack(actor_loss)).item()}, step=self.agent_steps)
-        wandb.log({"losses/critic_loss": torch.mean(torch.stack(critic_loss)).item()}, step=self.agent_steps)
+
+        # log losses
+        if self.algo == "DQL":
+            bc_loss = metric["bc_loss"]
+            ql_loss = metric["ql_loss"]
+            actor_loss = metric["actor_loss"]
+            critic_loss = metric["critic_loss"]
+            wandb.log({"losses/bc_loss": torch.mean(torch.stack(bc_loss)).item()}, step=self.agent_steps)
+            wandb.log({"losses/ql_loss": torch.mean(torch.stack(ql_loss)).item()}, step=self.agent_steps)
+            wandb.log({"losses/actor_loss": torch.mean(torch.stack(actor_loss)).item()}, step=self.agent_steps)
+            wandb.log({"losses/critic_loss": torch.mean(torch.stack(critic_loss)).item()}, step=self.agent_steps)
+        elif self.algo == "IDQL":
+            policy_loss = metric["policy_loss"]
+            critic_v_loss = metric["critic_v_loss"]
+            critic_q_loss = metric["critic_q_loss"]
+            wandb.log({"losses/policy_loss": torch.mean(torch.stack(policy_loss)).item()}, step=self.agent_steps)
+            wandb.log({"losses/critic_v_loss": torch.mean(torch.stack(critic_v_loss)).item()}, step=self.agent_steps)
+            wandb.log({"losses/critic_q_loss": torch.mean(torch.stack(critic_q_loss)).item()}, step=self.agent_steps)
+        else:
+            raise ValueError(f"Unknown algorithm {self.algo}")
+
+        # log extra info
         for k, v in self.extra_info.items():
             wandb.log({f"{k}": v}, step=self.agent_steps)
 
@@ -305,7 +322,12 @@ class DiffusionRoadmap:
             self.epoch_num += 1
 
             # policy update
-            metric = self._train_diffusion_ql()
+            if self.algo == "DQL":
+                metric = self._train_diffusion_ql()
+            elif self.algo == "IDQL":
+                metric = self._train_diffusion_iql()
+            else:
+                raise ValueError(f"Unknown algorithm {self.algo}")
 
             self.agent_steps += self.batch_size
             all_fps = self.agent_steps / (time.time() - _t)
@@ -352,7 +374,7 @@ class DiffusionRoadmap:
         #     act_buf,
         #     *_
         # )= self.planner.perform_search(
-        #     critic=self.critic_target,
+        #     critic=self.model.critic_target,
         #     num_searches=100,
         #     length=50,
         #     search_for_planner=False
@@ -409,6 +431,7 @@ class DiffusionRoadmap:
         obs_critic_prime_demo = obs_critic_prime_demo[:, 0, :]
 
         # Update the replay buffer for behavioral cloning with the extracted walks
+        self.replay_buffer.clear()
         self.replay_buffer.store(
             obs_policy_demo,
             obs_critic_demo,
@@ -418,7 +441,64 @@ class DiffusionRoadmap:
             obs_policy_prime_demo,
             obs_critic_prime_demo
         )
-        self.bc_replay_buffer.store(obs_policy_demo, act_demo)
+        # self.bc_replay_buffer.store(obs_policy_demo, act_demo)
+
+        self.data_collect_time += time.time() - _t
+
+        # Restore the on policy context
+        self.obs = self.env.restore_episode_context(ep_ctxt)
+
+        # Train with the extracted walks
+        _t = time.time()
+        self.set_train()
+        metric = self.trainer.train()
+        self.rl_train_time += time.time() - _t
+
+        # clear cache
+        torch.cuda.empty_cache()
+
+        return metric
+
+    def _train_diffusion_iql(self):
+        # Execute PRM planning steps
+        _t = time.time()
+        self.set_eval()
+
+        # Save the episode context
+        ep_ctxt = self.env.save_episode_context()
+
+        # Perform PRM planning step
+        self.planner.run_prm()
+
+        # Train the task model
+        self.set_eval()
+
+        obs_policy_demo, obs_critic_demo, obs_policy_prime_demo, obs_critic_prime_demo, act_demo, _ \
+            = self.planner.extract_demos(
+                num_demos=100,
+                max_len=20,
+                num_parents=3,
+            )
+        # Compute the reward and done tensor
+        reward_sum_demo, env_not_done_demo = self.get_reward_and_done(obs_policy_demo.to(self.device))
+
+        # Remove the rollout_len dimension from the obs buffer
+        obs_policy_demo = obs_policy_demo[:, 0, :]
+        obs_critic_demo = obs_critic_demo[:, 0, :]
+        obs_policy_prime_demo = obs_policy_prime_demo[:, 0, :]
+        obs_critic_prime_demo = obs_critic_prime_demo[:, 0, :]
+
+        # Update the replay buffer for behavioral cloning with the extracted walks
+        self.replay_buffer.clear()
+        self.replay_buffer.store(
+            obs_policy_demo,
+            obs_critic_demo,
+            act_demo,
+            reward_sum_demo,
+            env_not_done_demo,
+            obs_policy_prime_demo,
+            obs_critic_prime_demo
+        )
 
         self.data_collect_time += time.time() - _t
 
@@ -507,7 +587,7 @@ class DiffusionRoadmap:
                 processed_obs = self.obs_policy_rms(obs_policy)
                 # sample a chunk of actions
                 if n % self.chunk_size == 0:
-                    pred_act_chunk = self.actor_target.sample_action_chunks(processed_obs)
+                    pred_act_chunk = self.model.sample_action_chunks(processed_obs)
 
                 next_action = pred_act_chunk[:, n % self.chunk_size, :]
                 next_action = torch.clamp(next_action, -1.0, 1.0)
@@ -574,7 +654,7 @@ class DiffusionRoadmap:
                 processed_obs = self.obs_policy_rms(obs["policy"])
                 # sample a chunk of actions
                 if n % self.query_frequency == 0:
-                    pred_act_chunk = self.actor_target.sample_action_chunks(processed_obs)
+                    pred_act_chunk = self.model.sample_action_chunks(processed_obs)
 
                 next_action = pred_act_chunk[:, n % self.query_frequency, :]
                 next_action = torch.clamp(next_action, -1.0, 1.0)

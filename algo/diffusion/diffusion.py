@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-from algo.diffusion.mlp import MLP
 from algo.diffusion.auxiliary import (linear_beta_schedule, cosine_beta_schedule, vp_beta_schedule,
                                       extract_into_tensor, WeightedL1, WeightedL2, ValueL1, ValueL2)
 from utils.utils import Progress, Silent
