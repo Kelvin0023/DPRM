@@ -59,13 +59,14 @@ class DiffusionRoadmap:
         # create Diffusion Actor
         if self.algo == "DQL":
             self.model = DiffusionQL(
-                actor_mlp_cfg=self.cfg["policy"]["model"]["actor_mlp"],
-                critic_mlp_cfg=self.cfg["policy"]["model"]["critic_mlp"],
+                actor_mlp_cfg=self.cfg["policy"]["model"]["actor"],
+                critic_mlp_cfg=self.cfg["policy"]["model"]["critic"],
                 obs_policy_dim=self.obs_policy_dim,
                 obs_critic_dim=self.obs_critic_dim,
                 action_dim=self.act_dim,
                 action_bound=1.0,
-                chunk_size=self.chunk_size,
+                obs_horizon=1,
+                action_horizon=self.chunk_size,
                 device=self.device,
                 beta_schedule="cosine",
                 num_timesteps=self.cfg["policy"]["model"]["actor"]["num_timesteps"],
@@ -79,7 +80,8 @@ class DiffusionRoadmap:
                 obs_critic_dim=self.obs_critic_dim,
                 action_dim=self.act_dim,
                 action_bound=1.0,
-                chunk_size=self.chunk_size,
+                obs_horizon=1,
+                action_horizon=self.chunk_size,
                 device=self.device,
                 beta_schedule="cosine",
                 num_timesteps=self.cfg["policy"]["model"]["actor"]["num_timesteps"],

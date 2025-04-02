@@ -4,7 +4,8 @@ import torch.nn as nn
 
 from algo.diffusion.critic import CriticQ, CriticV
 from algo.diffusion.diffusion import GaussianDiffusion
-from algo.diffusion.mlp import DiffusionMLP
+from algo.diffusion.unet1d import ConditionalUnet1D
+
 
 class ImplicitDiffusionQL(nn.Module):
     def __init__(
@@ -16,7 +17,8 @@ class ImplicitDiffusionQL(nn.Module):
             obs_critic_dim,
             action_dim,
             action_bound,
-            chunk_size,
+            obs_horizon,
+            action_horizon,
             device,
             # denoising diffusion parameters
             beta_schedule='linear',
@@ -32,32 +34,27 @@ class ImplicitDiffusionQL(nn.Module):
         self.obs_critic_dim = obs_critic_dim
         self.action_bound = action_bound
         self.action_dim = action_dim
-        self.chunk_size = chunk_size
+        self.obs_horizon = obs_horizon
+        self.action_horizon = action_horizon
         self.device = device
 
         # expectile exploration
         self.num_sample = num_sample
         self.critic_hyperparam = critic_hyperparam
 
-        # MLP for the diffusion model
-        self.mlp_model = DiffusionMLP(
-            action_dim=action_dim,
-            action_horizon=chunk_size,
-            cond_dim=obs_policy_dim,
-            time_emb_dim=actor_mlp_cfg["time_dim"],
-            mlp_dims=actor_mlp_cfg["mlp_dims"],
-            cond_mlp_dims=None,
-            activation_type=actor_mlp_cfg["activation_type"],
-            out_activation_type="Identity",
-            use_layernorm=actor_mlp_cfg["use_layernorm"],
-            residual_style=actor_mlp_cfg["residual_style"],
+        # U-Net model for the diffusion actor
+        self.unet_model = ConditionalUnet1D(
+            input_dim=action_dim,
+            global_cond_dim=obs_policy_dim,
         )
 
         # Diffusion model actor
         self.actor = GaussianDiffusion(
-            model=self.mlp_model,
+            model=self.unet_model,
             input_dim=obs_policy_dim,
-            output_dim=action_dim * chunk_size,
+            input_horizon=obs_horizon,
+            output_dim=action_dim,
+            output_horizon=action_horizon,
             output_bound=action_bound,
             num_timesteps=num_timesteps,
             device=device,
@@ -71,7 +68,7 @@ class ImplicitDiffusionQL(nn.Module):
             mlp_dims=critic_q_mlp_cfg["mlp_dims"],
             obs_critic_dim=self.obs_critic_dim,
             action_dim=self.action_dim,
-            action_steps=self.chunk_size,
+            action_steps=self.action_horizon,
             activation_type=critic_q_mlp_cfg["activation_type"],
             use_layernorm=critic_q_mlp_cfg["use_layernorm"],
             residual_style=critic_q_mlp_cfg["residual_style"],
@@ -82,7 +79,7 @@ class ImplicitDiffusionQL(nn.Module):
             mlp_dims=critic_v_mlp_cfg["mlp_dims"],
             obs_critic_dim=self.obs_critic_dim,
             action_dim=self.action_dim,
-            action_steps=self.chunk_size,
+            action_steps=self.action_horizon,
             activation_type=critic_v_mlp_cfg["activation_type"],
             use_layernorm=critic_v_mlp_cfg["use_layernorm"],
             residual_style=critic_v_mlp_cfg["residual_style"],
@@ -103,7 +100,7 @@ class ImplicitDiffusionQL(nn.Module):
         stacked_obs = stacked_obs.view(-1, self.obs_policy_dim)  # [S * B, D]
 
         # sample action chunks
-        stacked_action_chunks = self.actor.sample(stacked_obs)  # [S * B, T * A]
+        stacked_action_chunks = self.actor.sample(stacked_obs)  # [S * B, T, A]
 
         # compute Q values
         current_q1, current_q2 = self.critic_q(stacked_obs, stacked_action_chunks)  # [S * B, 1]
@@ -119,7 +116,7 @@ class ImplicitDiffusionQL(nn.Module):
 
             # compute weights for sampling
             stacked_action_chunks = stacked_action_chunks.view(
-                self.num_sample, -1, self.chunk_size, self.action_dim
+                self.num_sample, -1, self.action_horizon, self.action_dim
             )  # [S, B, T, A]
 
             # expectile exploration policy
@@ -131,7 +128,7 @@ class ImplicitDiffusionQL(nn.Module):
 
             # dummy dimension @ dim 0 for batched indexing
             sample_idx = sample_idx[None, :, None]  # [1, B, 1, 1]
-            sample_idx = sample_idx.repeat(self.num_sample, 1, self.chunk_size, self.action_dim)
+            sample_idx = sample_idx.repeat(self.num_sample, 1, self.action_horizon, self.action_dim)
 
             # Fetch the best action chunks
             best_action_chunks = torch.gather(stacked_action_chunks, 0, sample_idx)  # [B, T, A]
@@ -140,10 +137,10 @@ class ImplicitDiffusionQL(nn.Module):
             # gather the best sample -- filter out suboptimal Q during inference
             best_idx = q.argmax(0)  # [B]
             stacked_action_chunks = stacked_action_chunks.view(
-                self.num_sample, -1, self.chunk_size, self.action_dim
+                self.num_sample, -1, self.action_horizon, self.action_dim
             )  # [S, B, T, A]
             best_action_chunks_idx = best_idx[None, :, None, None]  # [1, B, 1, 1]
-            best_action_chunks_idx = best_action_chunks_idx.repeat(self.num_sample, 1, self.chunk_size, self.action_dim)
+            best_action_chunks_idx = best_action_chunks_idx.repeat(self.num_sample, 1, self.action_horizon, self.action_dim)
 
             # Fetch the best action chunks
             best_action_chunks = torch.gather(stacked_action_chunks, 0, best_action_chunks_idx)  # [B, T, A]

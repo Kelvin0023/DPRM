@@ -298,7 +298,7 @@ class PRM:
         # Normalize the observation
         processed_obs = self.obs_policy_rms(obs_dict['policy'])
         # Get predicted actions from target actor
-        pred_action_chunks = self.model.sample_action_chunks(processed_obs, use_expectile_exploration=True)
+        pred_action_chunks = self.model.sample_action_chunks(processed_obs)
         return {"actions": pred_action_chunks}
 
     def plan_steps(self) -> None:

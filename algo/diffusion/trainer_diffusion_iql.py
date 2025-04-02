@@ -28,7 +28,7 @@ class ImplicitDiffusionQLTrainer(object):
         self.obs_dim = model.obs_policy_dim
         self.state_dim = model.obs_critic_dim
         self.action_dim = model.action_dim
-        self.chunk_size = model.chunk_size
+        self.action_horizon = model.action_horizon
         self.time_steps = model.actor.num_timesteps
 
         # normalization
@@ -64,7 +64,6 @@ class ImplicitDiffusionQLTrainer(object):
         self.last_lr = cfg["learning_rate"]
         self.weight_decay = cfg["weight_decay"]
 
-        self.eta = cfg["eta"]  # q_learning weight
         self.tau = cfg["tau"]  # target network update rate
         self.discount = cfg["discount"]
 
@@ -172,10 +171,9 @@ class ImplicitDiffusionQLTrainer(object):
         )
         return q_loss
 
-    def policy_loss(self, action_chunk, obs_policy, weights=1.0):
+    def policy_loss(self, action_sequence, obs_policy, weights=1.0):
         t = torch.randint(0, self.time_steps, (self.batch_size,), device=self.device).long()
-        flatten_action = action_chunk.view(-1, self.chunk_size * self.action_dim)
-        return self.diffusion_actor.p_losses(flatten_action, obs_policy, t, weights)
+        return self.diffusion_actor.p_losses(action_sequence, obs_policy, t, weights)
 
     def train(self):
         metric = {'policy_loss': [], 'critic_v_loss': [], 'critic_q_loss': []}
@@ -220,7 +218,7 @@ class ImplicitDiffusionQLTrainer(object):
                 sampled_act_chunk,
                 sampled_reward_sum,
                 sampled_env_not_done,
-                self.discount ** self.chunk_size,
+                self.discount ** self.action_horizon,
             )
             # Step the loss for critic Q network
             self.critic_q_optimizer.zero_grad()

@@ -22,6 +22,6 @@ success_reward_scale: 10.0
 at_goal_threshold: 0.1
 
 # PD controller
-kp: 5
-kd: 2
+kp: 3  # 5
+kd: 1  # 2
 

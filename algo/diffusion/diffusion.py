@@ -3,8 +3,6 @@ import torch.nn as nn
 
 from algo.diffusion.auxiliary import (linear_beta_schedule, cosine_beta_schedule, vp_beta_schedule,
                                       extract_into_tensor, WeightedL1, WeightedL2, ValueL1, ValueL2)
-from utils.utils import Progress, Silent
-
 
 
 class GaussianDiffusion(nn.Module):
@@ -12,7 +10,9 @@ class GaussianDiffusion(nn.Module):
             self,
             model,
             input_dim,
+            input_horizon,
             output_dim,
+            output_horizon,
             output_bound,
             num_timesteps,
             device,
@@ -28,7 +28,9 @@ class GaussianDiffusion(nn.Module):
         self.model = model
 
         self.input_dim = input_dim
+        self.input_horizon = input_horizon
         self.output_dim = output_dim
+        self.output_horizon = output_horizon
 
         self.num_timesteps = num_timesteps
         self.predict_epsilon = predict_epsilon
@@ -135,7 +137,11 @@ class GaussianDiffusion(nn.Module):
         """
         Compute the mean and variance of the diffusion posterior p(x_t | x_0, \hat{x}_0)
         """
-        x_reconstructed = self.predict_start_from_noise(x, t=t, noise=self.model(x, t, s))
+        x_reconstructed = self.predict_start_from_noise(
+            x_t=x,
+            t=t,
+            noise=self.model(sample=x, timestep=t, global_cond=s)
+        )
 
         if self.clip_denoised:
             x_reconstructed.clamp_(-self.output_bound, self.output_bound)
@@ -166,19 +172,14 @@ class GaussianDiffusion(nn.Module):
         if return_diffusion:
             diffusion_buf = [x]
 
-        progress = Progress(self.num_timesteps) if verbose else Silent()
         # Loop over the timesteps in reverse order
         for i in reversed(range(self.num_timesteps)):
             time_steps = torch.full((b,), i, device=self.device, dtype=torch.long)
             x = self.p_sample(x, time_steps, state)
 
-            # Update the progress bar
-            progress.update({'t': i})
-
             # Store the diffusion tensor if required
             if return_diffusion:
                 diffusion_buf.append(x)
-        progress.close()
 
         return x, torch.stack(diffusion_buf, dim=1) if return_diffusion else x
 
@@ -187,7 +188,7 @@ class GaussianDiffusion(nn.Module):
         Sample from the diffusion model to get the predicted action given certain state
         """
         b = state.shape[0]
-        output_shape = (b, self.output_dim)
+        output_shape = (b, self.output_horizon, self.output_dim)
         pred_output, _ = self.p_sample_loop(state, output_shape, *args, **kwargs)
 
         if self.clip_denoised:
@@ -222,7 +223,7 @@ class GaussianDiffusion(nn.Module):
         # Sample from the diffusion model
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
         # Predict the noise using the model
-        x_reconstructed = self.model(x_noisy, t, state)
+        x_reconstructed = self.model(sample=x_noisy, timestep=t, global_cond=state)
 
         assert x_reconstructed.shape == noise.shape
 
@@ -254,13 +255,17 @@ class GaussianDiffusion(nn.Module):
 
 if __name__ == "__main__":
     input_dim = 64
+    input_horizon = 1
     output_dim = 32
+    output_horizon = 4
     time_steps = 100
 
     model = GaussianDiffusion(
         model=None,
         input_dim=input_dim,
+        input_horizon=input_horizon,
         output_dim=output_dim,
+        output_horizon=output_horizon,
         output_bound=1.0,
         num_timesteps=time_steps,
         device='cuda',

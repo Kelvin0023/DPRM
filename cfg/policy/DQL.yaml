@@ -30,11 +30,11 @@ trainer:
   update_ema_every: 5
 
   # batch size
-  batch_size: 1024
+  batch_size: 512  # 1024
   # mini epochs
-  iterations: 20
+  iterations: 50
 
-  eta: 10.0
+  eta: 1.0  # 10.0
   tau: 0.005
   discount: 0.99
 

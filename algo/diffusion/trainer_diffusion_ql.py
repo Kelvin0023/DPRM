@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from rl_games.common.common_losses import actor_loss
 from torch.nn import functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
@@ -23,7 +24,7 @@ class DiffusionQLTrainer(object):
         self.obs_dim = model.obs_policy_dim
         self.state_dim = model.obs_critic_dim
         self.action_dim = model.action_dim
-        self.chunk_size = model.chunk_size
+        self.action_horizon = model.action_horizon
         self.time_steps = model.actor.num_timesteps
 
         # normalization
@@ -88,10 +89,9 @@ class DiffusionQLTrainer(object):
             return
         self.ema.update_model_average(self.ema_model, self.diffusion_actor)
 
-    def policy_loss(self, action_chunk, obs_policy, weights=1.0):
+    def policy_loss(self, action_sequence, obs_policy, weights=1.0):
         t = torch.randint(0, self.time_steps, (self.batch_size,), device=self.device).long()
-        flatten_action = action_chunk.view(-1, self.chunk_size * self.action_dim)
-        return self.diffusion_actor.p_losses(flatten_action, obs_policy, t, weights)
+        return self.diffusion_actor.p_losses(action_sequence, obs_policy, t, weights)
 
     def train(self):
         metric = {'bc_loss': [], 'ql_loss': [], 'actor_loss': [], 'critic_loss': []}
@@ -116,7 +116,7 @@ class DiffusionQLTrainer(object):
             norm_obs_policy = self.obs_policy_rms(sampled_obs_policy)
             norm_obs_critic = self.obs_critic_rms(sampled_obs_critic)
 
-            """ Critic Q Training """
+            # """ Critic Q Training """
             current_q1, current_q2 = self.mlp_critic(norm_obs_critic, sampled_act_chunk)
 
             # predict action chunk for the next time step
@@ -129,12 +129,12 @@ class DiffusionQLTrainer(object):
                 self.value_rms.eval()
                 unnorm_next_q1 = self.value_rms(next_q1, unnorm=True)
                 unnorm_next_q2 = self.value_rms(next_q2, unnorm=True)
-                unnorm_target_q = sampled_reward_sum + sampled_env_not_done * (self.discount ** self.chunk_size) * torch.min(unnorm_next_q1, unnorm_next_q2)
+                unnorm_target_q = sampled_reward_sum + sampled_env_not_done * (self.discount ** self.action_horizon) * torch.min(unnorm_next_q1, unnorm_next_q2)
                 target_q = self.value_rms(unnorm_target_q)
             else:
                 scaled_next_q1 = next_q1 * self.value_scale
                 scaled_next_q2 = next_q2 * self.value_scale
-                scaled_target_q = sampled_reward_sum + sampled_env_not_done * (self.discount ** self.chunk_size) * torch.min(scaled_next_q1, scaled_next_q2)
+                scaled_target_q = sampled_reward_sum + sampled_env_not_done * (self.discount ** self.action_horizon) * torch.min(scaled_next_q1, scaled_next_q2)
                 target_q = scaled_target_q / self.value_scale
 
             critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)

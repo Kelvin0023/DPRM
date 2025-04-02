@@ -1,6 +1,6 @@
 _target_: algo.prm.PRM
 
-rollout_len: 4
+rollout_len: 8 #4
 samples_per_epoch: 2048  # 1024
 new_state_portion: 0.5
 node_merge_threshold: 0.05  # 0.2
