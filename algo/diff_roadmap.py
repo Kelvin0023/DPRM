@@ -419,9 +419,9 @@ class DiffusionRoadmap:
 
         obs_policy_demo, obs_critic_demo, obs_policy_prime_demo, obs_critic_prime_demo, act_demo, _ \
             = self.planner.extract_demos(
-                num_demos=50,
+                num_demos=20,
                 max_len=30,
-                num_parents=3
+                num_parents=20
             )
         # Compute the reward and done tensor
         reward_sum_demo, env_not_done_demo = self.get_reward_and_done(obs_policy_demo.to(self.device))

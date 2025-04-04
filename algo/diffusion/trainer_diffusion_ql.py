@@ -123,19 +123,20 @@ class DiffusionQLTrainer(object):
             norm_obs_policy_prim = self.obs_policy_rms(sampled_obs_policy_prime)
             norm_obs_critc_prim = self.obs_critic_rms(sampled_obs_critic_prime)
 
-            next_action_chunk = self.ema_model(norm_obs_policy_prim)
-            next_q1, next_q2 = self.mlp_critic_target(norm_obs_critc_prim, next_action_chunk)
-            if self.normalize_value:
-                self.value_rms.eval()
-                unnorm_next_q1 = self.value_rms(next_q1, unnorm=True)
-                unnorm_next_q2 = self.value_rms(next_q2, unnorm=True)
-                unnorm_target_q = sampled_reward_sum + sampled_env_not_done * (self.discount ** self.action_horizon) * torch.min(unnorm_next_q1, unnorm_next_q2)
-                target_q = self.value_rms(unnorm_target_q)
-            else:
-                scaled_next_q1 = next_q1 * self.value_scale
-                scaled_next_q2 = next_q2 * self.value_scale
-                scaled_target_q = sampled_reward_sum + sampled_env_not_done * (self.discount ** self.action_horizon) * torch.min(scaled_next_q1, scaled_next_q2)
-                target_q = scaled_target_q / self.value_scale
+            with torch.no_grad():
+                next_action_chunk = self.ema_model(norm_obs_policy_prim)
+                next_q1, next_q2 = self.mlp_critic_target(norm_obs_critc_prim, next_action_chunk)
+                if self.normalize_value:
+                    self.value_rms.eval()
+                    unnorm_next_q1 = self.value_rms(next_q1, unnorm=True)
+                    unnorm_next_q2 = self.value_rms(next_q2, unnorm=True)
+                    unnorm_target_q = sampled_reward_sum + sampled_env_not_done * (self.discount ** self.action_horizon) * torch.min(unnorm_next_q1, unnorm_next_q2)
+                    target_q = self.value_rms(unnorm_target_q)
+                else:
+                    scaled_next_q1 = next_q1 * self.value_scale
+                    scaled_next_q2 = next_q2 * self.value_scale
+                    scaled_target_q = sampled_reward_sum + sampled_env_not_done * (self.discount ** self.action_horizon) * torch.min(scaled_next_q1, scaled_next_q2)
+                    target_q = scaled_target_q / self.value_scale
 
             critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
             critic_loss = torch.mean(critic_loss)

@@ -20,6 +20,7 @@ create_sim_app()
 
 
 
+from time import sleep
 import gymnasium as gym
 import torch
 import numpy as np
@@ -74,8 +75,7 @@ def build_prm_mazebot(cfg: DictConfig):
         cfg=planner_cfg,
         env=env,
         buffer=None,
-        actor_target=None,
-        critic_target=None,
+        model=None,
         obs_policy_rms=None,
         obs_critic_rms=None,
         value_rms=None,
@@ -127,17 +127,23 @@ def build_prm_mazebot(cfg: DictConfig):
     # print("***** End of Random Walks *****")
 
     # Extract demonstrations
-    obs_policy_demo, *_= planner.extract_demos(num_demos=1, max_len=10, num_parents=3)
-    print("Obs Policy Demos:", obs_policy_demo)
-
-    # simulate environment with zero actions
     while simulation_app.is_running():
-        # run everything in inference mode
+        obs_policy_demo, *_= planner.extract_demos(num_demos=1, max_len=30, num_parents=20)
         with torch.inference_mode():
             # take zero actions
             zero_action = env.zero_actions()
             # apply actions
             env.step(zero_action)
+            sleep(2)
+
+    # # simulate environment with zero actions
+    # while simulation_app.is_running():
+    #     # run everything in inference mode
+    #     with torch.inference_mode():
+    #         # take zero actions
+    #         zero_action = env.zero_actions()
+    #         # apply actions
+    #         env.step(zero_action)
 
     # close the simulator
     env.close()

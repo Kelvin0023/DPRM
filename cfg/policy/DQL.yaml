@@ -1,6 +1,6 @@
 model:
   actor:
-    num_timesteps: 50
+    num_timesteps: 100
     time_dim: 16
     mlp_dims: [512, 512, 512]
     activation_type: ReLU
@@ -30,7 +30,7 @@ trainer:
   update_ema_every: 5
 
   # batch size
-  batch_size: 512  # 1024
+  batch_size: 512
   # mini epochs
   iterations: 50
 

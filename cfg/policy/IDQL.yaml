@@ -1,6 +1,6 @@
 model:
   actor:
-    num_timesteps: 50
+    num_timesteps: 100
     time_dim: 16
     mlp_dims: [512, 512, 512]
     activation_type: ReLU
